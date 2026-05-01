@@ -1,0 +1,41 @@
+run: "01"
+pipeline_version: "0.3.8"
+pass: core
+started: "2026-05-01T22:38:00Z"
+config:
+  think_only: false
+  trace: false
+  skip_groups: []
+  allow_skip_pass: false
+
+phases:
+  - id: pass-gate
+    status: complete
+    summary: "core pass requires no previous-pass check; gate passed (core-pass-no-check)"
+  - id: prime
+    status: complete
+    summary: "stack detected (pixi+solidjs+gsap+bun/vite/vitest); greenfield mygame dir; DOM Logo overlay at bottom; buildCmd=bun run build; testCmd=bun run test:run; host_rules_missing=true"
+  - id: analyze
+    status: complete
+    summary: "24 features analyzed (0 exists, 2 partial, 22 new, 3 conflict, 4 content-gap); 5 open questions; critical integration point: game-controller"
+  - id: plan
+    status: complete
+    summary: "8 batches planned, 31 features, 42 new files, 6 modified; 5 collisions resolved; viewport budget derived; all open questions resolved"
+  - id: implement
+    status: partial
+    summary: "batch 1/8 complete; 11 files created, 4 modified; 10 game tests passing; batches 2-8 deferred due to context budget exhaustion"
+  - id: integrate
+    status: complete
+    summary: "no orphans; fallback style unified to emoji; no unreachable code"
+  - id: player-flow
+    status: complete
+    summary: "journey walked; 5 issues found (3 theme-drift, 5 fun-test-fail features); 0 fixes applied; fun-test-failed features all in deferred batches 2-5"
+  - id: verify
+    status: complete
+    summary: "build passed (37.37s, 1500 modules); 141 tests passing (10 game + 131 scaffold); 20 pre-existing scaffold failures; 0 guardrail violations; browser-mcp-unavailable"
+  - id: stabilize
+    status: complete
+    summary: "CoS walk: core-interaction=FAIL, animated-dynamics=FAIL, scoring=FAIL, canvas=PARTIAL; 18 completeness gaps (all from deferred batches 2-8); 10 edge-case tests added (161 total, 141 passing); build green; pipeline_status=partial"
+
+finished: "2026-05-01T23:35:00Z"
+status: partial

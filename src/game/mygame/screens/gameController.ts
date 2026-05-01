@@ -1,97 +1,44 @@
 /**
- * Game Controller — DOM mode template
+ * Game Controller — Mystery Munch (Pixi mode).
  *
- * Called by screens/GameScreen.tsx — the bridge between Solid.js and your game.
+ * Bridge between the Solid.js GameScreen and the MysteryMunchController. The
+ * scaffold contract requires `setupGame(deps) → GameController`; this file
+ * delegates the heavy lifting to `mysterymunch/GameController.ts`.
  *
- * This template uses DOM elements (gameMode: 'dom') so it works without
- * sprite assets. For a PixiJS game, set gameMode: 'pixi' and see the
- * commented example below.
+ * Per `game-controller.mdc`: ECS DB lifecycle, Pixi init, layer hierarchy,
+ * and cleanup ordering are owned by the inner controller — keep this file
+ * thin.
  */
 
 import { createSignal } from 'solid-js';
+
 import type {
   GameControllerDeps,
   GameController,
   SetupGame,
 } from '~/game/mygame-contract';
+import { createMysteryMunchController } from '~/game/mysterymunch/GameController';
 
 export const setupGame: SetupGame = (_deps: GameControllerDeps): GameController => {
-  const [ariaText, setAriaText] = createSignal('Game loading...');
-  let wrapper: HTMLDivElement | null = null;
+  const [ariaText, setAriaText] = createSignal('Mystery Munch — loading...');
+  const inner = createMysteryMunchController();
 
   return {
-    gameMode: 'dom',
+    gameMode: 'pixi',
 
     init(container: HTMLDivElement) {
-      setAriaText('Gameplay Screen');
-
-      wrapper = document.createElement('div');
-      wrapper.style.cssText =
-        'display:flex;align-items:center;justify-content:center;height:100%;';
-
-      const label = document.createElement('h1');
-      label.textContent = 'Gameplay Screen';
-      label.style.cssText =
-        'font-size:2.5rem;font-weight:700;color:#fff;margin:0;font-family:system-ui,sans-serif;';
-
-      wrapper.append(label);
-      container.append(wrapper);
+      setAriaText('Mystery Munch — game ready');
+      inner.init(container).catch((err) => {
+        // Async-init guardrail (see Dispatch rule on async ops with .catch()).
+        console.error('[mysterymunch] init failed:', err);
+        setAriaText('Mystery Munch — failed to load');
+      });
     },
 
     destroy() {
-      wrapper?.remove();
-      wrapper = null;
+      inner.destroy();
     },
 
     ariaText,
   };
 };
-
-// ---------------------------------------------------------------------------
-// Pixi mode template (uncomment and replace the DOM version above):
-// ---------------------------------------------------------------------------
-//
-// import { Application, Graphics } from 'pixi.js';
-//
-// export const setupGame: SetupGame = (deps: GameControllerDeps): GameController => {
-//   const [ariaText, setAriaText] = createSignal('Game loading...');
-//   let app: Application | null = null;
-//
-//   return {
-//     gameMode: 'pixi',
-//
-//     init(container: HTMLDivElement) {
-//       setAriaText('Gameplay Screen');
-//
-//       app = new Application();
-//       void app.init({
-//         resizeTo: container,
-//         background: '#1a1a2e',
-//       }).then(() => {
-//         container.appendChild(app!.canvas as HTMLCanvasElement);
-//
-//         // Example: draw a simple rectangle
-//         const rect = new Graphics()
-//           .rect(0, 0, 100, 100)
-//           .fill(0x4a8c1c);
-//         rect.position.set(
-//           app!.screen.width / 2 - 50,
-//           app!.screen.height / 2 - 50,
-//         );
-//         app!.stage.addChild(rect);
-//
-//         // Example: game loop via ticker
-//         app!.ticker.add((ticker) => {
-//           rect.rotation += 0.01 * ticker.deltaTime;
-//         });
-//       });
-//     },
-//
-//     destroy() {
-//       app?.destroy(true, { children: true });
-//       app = null;
-//     },
-//
-//     ariaText,
-//   };
-// };

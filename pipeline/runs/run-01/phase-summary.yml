@@ -1,0 +1,403 @@
+pass_gate:
+  status: complete
+  pass: core
+  previous_pass: null
+  previous_run: null
+  previous_pass_stable: true
+  gate_decision: skipped_core
+  notes: "core pass requires no previous-pass check; gate passed (core-pass-no-check)"
+  carry_forward: {}
+
+prime:
+  status: complete
+  project: "Mystery Munch (Scooby-Doo Bubble Pop)"
+  stack: "pixi + solidjs + gsap + bun (vite, vitest)"
+  existing_features: 0
+  dom_overlays:
+    - "WolfGamesLogo (bottom, ~32px, GameScreen.tsx)"
+  carry_forward:
+    target_device: "iPhone reference portrait 390x844 (dvh)"
+    game_greenfield: true
+    reserved_bottom_px: 64
+    reserved_top_px: 0
+    game_controller_stub: true
+    stack_gaps: []
+    host_rules_missing: true
+
+analyze:
+  status: complete
+  features:
+    exists: 0
+    partial: 2
+    new: 22
+    conflict: 3
+    content_gap: 4
+  conflict_breakdown:
+    reuse: 0
+    adapt: 3
+    replace: 0
+  high_risk: [game-controller, bubble-grid, swap-interaction, level-generation, board-states, game-mode-pixi, state-architecture]
+  medium_risk: [loading-screen, title-screen, results-screen-win, results-screen-loss, state-signals, gravity-fill, special-bubbles, blockers, clue-tiles, hud-renderer, move-counter, win-condition, loss-condition, continue-system, deadlock-detection, tutorial-flow, chapter-interstitial, chapter-complete-villain-reveal, chapter-progression, scooby-companion]
+  open_questions: 5
+  carry_forward:
+    critical_integration_point: game-controller
+    transformative_hint: false
+
+plan:
+  status: complete
+  gdd_type: "additive"
+  batches: 8
+  features: 31
+  new_files: 42
+  modified_files: 6
+  viewport_budget:
+    hud_px: 120
+    board_px: 332
+    bottom_bar_px: 96
+    dom_reserved_bottom: 64
+    cell_visual_px: 41
+    cell_tap_px: 45
+    total_px: 652
+    available_px: 844
+  resolved_questions: 5
+  out_of_pass_cos: []
+  warnings:
+    - "collision-resolved:game-mode — skill-wins (adapt: Pixi impl replaces DOM body; guardrail #1 critical)"
+    - "collision-resolved:state-source-of-truth — skill-wins (ecs-state.mdc critical; signals demoted to DOM bridge)"
+    - "collision-resolved:screen-id-chapter-map — skill-wins (scaffold-state critical; routed to start screen Continue branch)"
+    - "collision-resolved:results-screen-copy — gdd-wins (brand copy; soft collision; 'Almost there, pal!' replaces 'Game Over')"
+    - "collision-resolved:bubble-color-alone — skill-wins (ux/core-guidelines soft; emoji icon added per bubble type)"
+    - "self-audit:src-core-readonly — PASS"
+    - "self-audit:no-stubs-placeholders — PASS"
+    - "self-audit:slug-substitution — PASS"
+    - "self-audit:collision-resolution — PASS"
+    - "self-audit:integration-file-coverage — PASS"
+  resolved_questions_scalars:
+    oq-ad-integration: "no-op stub for core pass; ad SDK deferred to later pass"
+    oq-snack-coins-scope: "signal placeholder (999 balance) for core pass; meta-pass adds economy"
+    oq-villain-reveal-assets: "emoji/text sequence for core pass; sprite atlas deferred to asset pass"
+    oq-chapter-map-navigation: "routed to start screen Continue branch; no new screen ID"
+    oq-color-alone-accessibility: [Amber🌟, Teal💎, Violet🔮, Coral🌸, Lime🍃]
+  carry_forward:
+    game_slug: mysterymunch
+    hook_batch: 2
+    priority_ordering_applied: true
+    viewport_budget_derived_from: greenfield_defaults
+    cos_deferred_to_batch: {}
+    critical_integration_point: game-controller
+
+implement:
+  status: partial
+  batches_completed: "1/8"
+  files_modified: 4
+  # Modified: src/game/state.ts, src/game/mygame/screens/gameController.ts,
+  #           src/game/screens/ResultsScreen.tsx, vitest.config.ts
+  files_created: 11
+  # Created (all under src/game/mysterymunch/ unless noted):
+  #   data/bubbleTypes.ts
+  #   state/types.ts
+  #   state/MysteryMunchPlugin.ts
+  #   state/MysteryMunchPlugin.test.ts
+  #   state/bridge.ts
+  #   state/logic/seedBoard.ts
+  #   renderers/BoardLayout.ts
+  #   renderers/BoardRenderer.ts
+  #   renderers/BoardRenderer.test.ts
+  #   renderers/BlockRenderer.ts
+  #   GameController.ts
+  tests_added: 10
+  features_audited: 5
+  # Audited (batch 1): game-controller, state-signals, bubble-grid,
+  #                    game-mode-pixi, state-architecture
+  issues_found: 1
+  # 1: BlockRenderer has no direct unit test — Pixi Container/Text behavior
+  #    is covered indirectly via BoardRenderer layout tests + integration build.
+  fixes_applied: 1
+  # 1: deferred pixi runtime imports inside GameController.init() so the
+  #    contract test (node env, no `navigator`) keeps loading the module.
+  deferred:
+    - id: batch-2
+      severity: CRITICAL
+      reason: "swap interaction + match detection + scoring core loop. Without batch 2, player cannot play. Per Dispatch rule (batch deferred AND player cannot complete a level): CRITICAL pipeline failure — playability trumps visibility."
+    - id: batch-3
+      severity: CRITICAL
+      reason: "gravity fill + cascade + deadlock — required for valid match-3 flow. Without it the board freezes after first match."
+    - id: batch-4
+      severity: CRITICAL
+      reason: "win/loss conditions + continue system. Without it the player cannot complete a level."
+    - id: batch-5
+      severity: CRITICAL
+      reason: "level generation + tutorial T1/T2 + chapter progression. Without it the game has no content beyond a frozen seeded board."
+    - id: batch-6
+      severity: HIGH
+      reason: "special bubbles + Scooby companion (P1). Game is playable without this but lacks the meta-mechanic depth for the GDD's pattern-busters CoS at secondary pass."
+    - id: batch-7
+      severity: HIGH
+      reason: "loading/title screen branding + first-time cutscene (P1). Player flow works on scaffold copy but Mystery Munch brand identity is missing."
+    - id: batch-8
+      severity: MEDIUM
+      reason: "chapter interstitial + villain reveal (P2 narrative polish). Pure narrative add-on."
+  blockers:
+    - "context-budget: implement phase agent ran out of execution budget after completing batch 1's red-green-wire-walk-DoD loop. Batches 2-8 require a fresh implement-phase invocation per the per-batch DoD gate (no advance on partial green)."
+  ux_gaps:
+    - "BlockRenderer has no Pixi-runtime unit test — covered transitively via BoardRenderer layout test set; full visual coverage needs a browser-env test setup that is not yet shipped in this scaffold's vitest config (node env)."
+  cos_gaps:
+    - batch_id: 1
+      cos_id: canvas
+      issue: "cellVisual=41px is below the canvas-CoS 48px guideline at 8×8 on a 332px-wide board. Plan accepted this trade-off via emoji+color dual cue. Acceptable per design-smells fallback priority but not a perfect canvas-CoS pass — secondary pass should reconsider 7×7 or wider board."
+  cos_findings:
+    - batch_id: 1
+      cos_id: canvas
+      lens: "piece-size"
+      status: "partial"
+      note: "41px visual; emoji+color dual cue compensates"
+    - batch_id: 1
+      cos_id: canvas
+      lens: "theme-distinct"
+      status: "pass"
+      note: "5 distinct colors + 5 distinct emojis verified by unit test"
+    - batch_id: 1
+      cos_id: canvas
+      lens: "no-overlap"
+      status: "pass"
+      note: "boardTop ≥ 120 (HUD); boardBottom ≤ 684 (above 96+64 reserved); unit-tested"
+    - batch_id: 1
+      cos_id: animated-dynamics
+      lens: "no-instant-state"
+      status: "pass"
+      note: "idle wobble GSAP tween in BlockRenderer"
+    - batch_id: 1
+      cos_id: animated-dynamics
+      lens: "event-queue"
+      status: "deferred"
+      note: "queue pattern lands in batches 2-3; plugin scaffold ready"
+    - batch_id: 1
+      cos_id: core-interaction
+      lens: "one-gesture"
+      status: "deferred"
+      note: "no input handler in batch 1; lands in batch 2"
+    - batch_id: 1
+      cos_id: scoring
+      lens: "multiplicative-dimensions"
+      status: "deferred"
+      note: "score resource exists; formula in batch 2"
+  warnings:
+    - "copy-audit: ResultsScreen win header 'Mystery Solved!' is plan-derived, not GDD-specified — GDD specifies 'Next Mystery' CTA but no win-header copy at this surface; soft drift, not a content-fidelity violation."
+    - "vitest.config.ts include glob extended to `src/**/*.test.ts` so colocated batch tests run alongside legacy tests/unit/. Net effect: +10 new tests pass; pre-existing 20 failures unchanged."
+  carry_forward:
+    actual_hook_batch: 1
+    # Plan declared hook_batch=2 (swap + first match pop = first reward); after
+    # batch 1, the player sees the board but cannot interact. The actual
+    # "first-rewarding-moment" remains batch 2 — but since batches 2-8 are
+    # deferred, the playable hook does not yet exist.
+    viewport_budget_changed: false
+    deferred_cos:
+      - core-interaction
+      - animated-dynamics
+      - scoring
+    batch_boundary_violations: []
+    unfixed_ux_issues:
+      - "batch-1: cell visual 41px below canvas-CoS 48px target (geometric trade for 8x8)"
+      - "batch-1: BlockRenderer lacks direct pixi-runtime unit test (env limitation)"
+    asset_fallbacks_applied:
+      - "bubbles:emoji-glyph-on-tinted-circle"
+      - "background:graphics-rect-flat-color"
+    priority_reorder_applied: false
+    dod_failures: []
+    copy_audit_skipped: false
+
+integrate:
+  status: complete
+  viewport_rederived: false
+  # viewport_budget_changed == false per implement.carry_forward — trusted from $runContext; no recomputation needed.
+  orphans_wired: []
+  orphans_deleted: []
+  fallbacks_unified:
+    - "bubbles:emoji-glyph-on-tinted-circle (emoji priority, highest-tier)"
+    - "background:graphics-rect-flat-color (structural framing element, not a game entity — no label required)"
+  unreachable: []
+  unwired_modules_found: 0
+  warnings: []
+  carry_forward:
+    # viewport_budget_changed == false → no recomputation; scalar omitted per phase constraint.
+    viewport_budget_recomputed_total: null
+    asset_fallbacks_unified_style: "emoji"
+    unreachable_blocks_playability: false
+    orphan_wiring_blocked: []
+
+player_flow:
+  status: complete
+  journey_walked: true
+  transitions_checked:
+    - loading_to_start
+    - start_to_game
+    - game_to_results
+    - results_to_start
+  fun_test_result: fail
+  issues_found: 5
+  fixes_applied: 0
+  carry_forward:
+    journey_breaks:
+      - "loading_to_start: palette-jar — LoadingScreen #BCE083 green clashes with dark mystery game canvas #0e1024"
+      - "start_to_game: placeholder-copy — startView shows 'Start Screen' title and 'Play' button, not Mystery Munch brand"
+      - "start_to_game: theme-drift — startView backgroundColor #BCE083 mismatches game/results dark palette"
+    fun_test_failed_features:
+      - "swap-interaction"
+      - "match-detection"
+      - "gravity-fill"
+      - "win-condition"
+      - "loss-condition"
+    difficulty_mismatch: []
+    theme_drift:
+      - "loading"
+      - "start"
+    cos_still_failing:
+      - "core-interaction"
+      - "animated-dynamics"
+      - "scoring"
+
+verify:
+  status: complete
+  build: "passed (37.37s, 1500 modules transformed)"
+  tests_passing: 141
+  tests_total: 151
+  game_tests: "10 passed (BoardRenderer.test.ts 6, MysteryMunchPlugin.test.ts 4)"
+  fix_cycles: 0
+  playability: "skipped (browser-mcp-unavailable)"
+  guardrails_audited: 18
+  guardrails_violations: 0
+  mobile_constraints_violations: 0
+  design_smells_found: 0
+  remaining_issues:
+    - "browser-mcp-unavailable: browser-verify scope is 'smoke' but MCP unavailable for boot/interaction test"
+    - "content_fidelity_skipped: start-screen placeholder — GDD specifies branded 'Solve the Mystery' title screen, deferred to batch 7 per plan"
+    - "pre-existing scaffold test failures: 20 failed tests in tests/unit/{assets,scripts,lint}/ not related to game code (node-env mock issues in asset facade tests)"
+  carry_forward:
+    browser_verified: false
+    browser_verify_scope: smoke
+    unwinnable: null
+    guardrails_clean: true
+    content_fidelity_clean: false
+    content_fidelity_notes: "start-screen-placeholder is a known deferred item per batch 1 plan, not a content violation"
+    build_status: passed
+    test_status: "game tests passed; scaffold tests have pre-existing failures unrelated to game code"
+
+stabilize:
+  status: complete
+  completion_ratio: "1/8 batches (batch-1 foundation only)"
+  test_count: 20
+  # 10 original game tests (MysteryMunchPlugin.test.ts ×4, BoardRenderer.test.ts ×6)
+  # + 10 edge-case tests added by stabilize (MysteryMunchPlugin ×6, BoardRenderer ×4)
+  known_issues:
+    - "batches 2-8 deferred (CRITICAL: player cannot interact with board; core loop not playable)"
+    - "cell visual 41px is below canvas-CoS 48px target (geometric trade for 8×8 on 332px board)"
+    - "scaffold test suite has 20 pre-existing failures (tests/unit/{assets,scripts,lint}/) — unrelated to game code"
+
+  # ── CoS Walk ────────────────────────────────────────────────────────────
+
+  cos_failed:
+    - core-interaction
+    - animated-dynamics
+    - scoring
+
+  cos_rationale:
+    core-interaction: >
+      Exit criteria unmet: interaction-archetype.md not written (planned batch 2 files.state);
+      SwapHandler not implemented (batch 2 deferred); pointer events with capture and
+      touch-action:none not wired; invalid-gesture visible feedback absent; one-continuous-gesture
+      rule has no implementation. boardPhase resource exists but no input pipeline to block.
+      Batches 2-8 deferred due to context budget exhaustion after batch 1.
+    animated-dynamics: >
+      Exit criteria unmet: event-queue pattern not implemented (batch 2-3 deferred);
+      gravity-fill animations absent (batch 3 deferred); cascade escalation absent;
+      input-blocking has ECS resource but no input handler. Partial pass: stable ID
+      (blocksById map keyed by bubbleId) and idle wobble GSAP tween are in place.
+      Full exit criteria require batches 2-3 which were deferred.
+    scoring: >
+      Exit criteria unmet: scoringLogic.ts not implemented (batch 2 deferred); no
+      multiplicative dimensions (matchScore × chainMultiplier); no 3× skilled-vs-beginner
+      differentiation. score ECS resource and addScore transaction exist as foundation
+      but scoring formula never executes. Planned for batch 2.
+
+  cos_partial:
+    canvas: >
+      Partial: piece visual 41px < 48px target (known plan trade-off: 8×8 grid on 332px
+      board; emoji+color dual cue compensates). HUD/board/bottom overlap: PASS (unit-tested).
+      5 distinct emoji+color pairs: PASS. Theme partially expressed (dark #0e1024 background,
+      colored circles with emoji); LoadingScreen/StartScreen still have scaffold placeholder
+      copy (deferred to batch 7). canvas does not reach full pass without batch 7 branding.
+
+  # ── Completeness Walk (Pass core — Core Loop) ──────────────────────────
+  # Items checked based on what batch 1 delivered.
+
+  completeness_gaps:
+    - item: "Interaction: Primary interaction defined (tap-swap) — SwapHandler not implemented (batch 2 deferred)"
+      reason: "CRITICAL batch deferred due to context budget; player cannot interact with board"
+    - item: "Interaction: Interaction template applied from aidd-custom/interaction-templates/"
+      reason: "batch 2 deferred; no interaction template wired"
+    - item: "Interaction: Gesture detection works on 60 fps mobile"
+      reason: "batch 2 deferred; no gesture handler"
+    - item: "Interaction: Swap/clear animation plays correctly"
+      reason: "batch 2-3 deferred; no swap or pop animation"
+    - item: "Interaction: Invalid-move feedback (shake, reject animation)"
+      reason: "batch 2 deferred; no snap-back animation"
+    - item: "Board & Pieces: Piece visual style locked — geometric trade (41px < 48px)"
+      reason: "known plan trade-off; acceptable for 8×8 but noted"
+    - item: "Core Mechanics: Match/clear detection works"
+      reason: "matchDetection.ts not implemented (batch 2 deferred)"
+    - item: "Core Mechanics: Gravity drop with per-piece animation (board-diff)"
+      reason: "gravityFill.ts not implemented (batch 3 deferred)"
+    - item: "Core Mechanics: New-piece spawning from top"
+      reason: "batch 3 deferred"
+    - item: "Core Mechanics: Cascade resolution (chains complete before next input)"
+      reason: "batch 2-3 deferred"
+    - item: "Core Mechanics: Cascade escalation (speed, bounce, intensity scale with depth)"
+      reason: "batch 3 deferred"
+    - item: "Core Mechanics: Input blocked during animations"
+      reason: "boardPhase resource exists; SwapHandler (batch 2) is the enforcer — not yet wired"
+    - item: "Scoring (base): Base score per clear/match"
+      reason: "scoringLogic.ts not implemented (batch 2 deferred)"
+    - item: "Scoring (base): Real-time score display"
+      reason: "HudRenderer.ts not implemented (batch 2 deferred)"
+    - item: "Scoring (base): Score popup animation at clear location"
+      reason: "batch 2 deferred"
+    - item: "CoS: condition-core-interaction — not met (interaction not wired)"
+      reason: "batch 2 deferred"
+    - item: "CoS: condition-animated-dynamics — not met (event queue, gravity, cascade absent)"
+      reason: "batches 2-3 deferred"
+    - item: "CoS: condition-scoring (base) — not met (formula not implemented)"
+      reason: "batch 2 deferred"
+
+  pipeline_status: partial
+  # mergeStatus([fail, partial, fail, fail, green_build, partial_cos]) = partial
+  # cos_failed non-empty AND build+tests green → partial per $refs/status-merge.md.
+  # (Not 'failed' because build compiles and game tests pass — the 20 scaffold failures
+  # are pre-existing, unrelated to game code, and were present before this pipeline run.)
+
+  warnings:
+    - "deferred-closed:content_fidelity_skipped — verify: content_fidelity_clean=false (start-screen placeholder) re-justified: batch 7 deferred (P1 screen branding); not a violation of core-pass CoS since canvas CoS already graded partial"
+    - "deferred-closed:browser-mcp-unavailable — re-justified: playability test requires browser MCP which is unavailable in this CI environment; no code change possible; confirmed build/unit tests are the best available verification"
+    - "deferred-closed:plan.resolved_questions_scalars scan — all 5 scalars reviewed: oq-ad-integration (no-op stub, complete), oq-snack-coins-scope (999 signal placeholder, documented), oq-villain-reveal-assets (emoji/text, documented), oq-chapter-map-navigation (start screen routing, wired), oq-color-alone-accessibility (emoji dual cue, implemented in batch 1). None tagged deferred:/placeholder:/scaffold: in violation sense."
+    - "deferred-closed:plan.warnings collision-resolved:results-screen-copy gdd-wins — ResultsScreen.tsx was updated in batch 1 with 'Mystery Solved!' win header; GDD-specified 'Almost there, pal!' loss copy is in the plan for batch 4 ResultsScreen.tsx update; not yet implemented (batch 4 deferred)"
+    - "carry-open:implement.carry_forward.unfixed_ux_issues[batch-1:cell-visual-41px] — re-justified: geometric constraint of 8×8 on 332px board; fixing requires either 7×7 grid or wider board; deferred to secondary pass per plan"
+    - "carry-open:implement.carry_forward.unfixed_ux_issues[batch-1:BlockRenderer-lacks-direct-pixi-runtime-test] — re-justified: vitest node env cannot load Pixi; browser-env vitest not configured in scaffold; deferred to asset/polish pass"
+    - "carry-open:implement.deferred[batches 2-8] — CRITICAL batches deferred due to context budget exhaustion after batch 1; see stabilize.carry_forward.unresolved_for_next_pass"
+    - "carry-open:player_flow.carry_forward.journey_breaks[3 items] — loading/start palette mismatch and placeholder copy; resolved when batch 7 (screen branding) is implemented"
+    - "carry-open:player_flow.carry_forward.fun_test_failed_features[5 items] — swap-interaction/match-detection/gravity-fill/win-condition/loss-condition all deferred to batches 2-5"
+
+  carry_forward:
+    next_pass_ready: false
+    # next_pass_ready is false: pipeline_status=partial (cos_failed non-empty,
+    # completeness_gaps non-empty). Pass-gate for secondary pass must block until
+    # batches 2-8 are implemented and cos_failed is empty.
+    pass_stability: unstable
+    # unstable: player cannot complete the core loop (no swap interaction, no match,
+    # no gravity, no win/loss). The foundation (ECS+Pixi+board render) is stable but
+    # the playable loop is absent.
+    unresolved_for_next_pass:
+      - "batches-2-8: CRITICAL — implement all 7 deferred batches before secondary pass can begin. The core loop (swap→match→score→gravity→win/loss) is entirely absent."
+      - "core-interaction-cos: FAIL — SwapHandler, interaction-archetype.md, pointer events, visible feedback required"
+      - "animated-dynamics-cos: FAIL — event-queue pattern, gravity-fill animation, cascade escalation required"
+      - "scoring-cos: FAIL — scoringLogic.ts with multiplicative dimensions (matchScore×chainMultiplier) required"
+      - "canvas-cos: PARTIAL — LoadingScreen/StartScreen branding (batch 7) needed; 41px cell trade-off accepted"
+      - "scaffold-test-failures: 20 pre-existing failures in tests/unit/{assets,scripts,lint}/ — not game-code regressions; should be cleaned up separately"

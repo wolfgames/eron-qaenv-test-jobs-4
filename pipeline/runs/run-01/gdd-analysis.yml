@@ -1,0 +1,920 @@
+# gdd-analysis.yml — Structured feature delta
+# Written by phase 20 (analyze). Read by plan, implement, player-flow, stabilize.
+
+game: "Mystery Munch (Scooby-Doo Bubble Pop Adventure)"
+counts:
+  exists: 0
+  partial: 2
+  new: 22
+  conflict: 3
+  content_gap: 4
+conflict_breakdown:
+  reuse: 1
+  adapt: 2
+  replace: 0
+high_risk: 4
+open_questions: 5
+
+features:
+
+  # ── CONTENT-GAP: screens exist as scaffold infrastructure but content doesn't match GDD ──
+
+  - id: loading-screen
+    name: "Loading Screen"
+    status: content-gap
+    lifecycle_phase: BOOT
+    risk: MEDIUM
+    complexity: low
+    cos_required: []
+    ux_zones:
+      thumb_zone: center
+      touch_targets: []
+      feedback_surfaces: [full-screen-bg, progress-indicator]
+    affected_files:
+      - src/game/screens/LoadingScreen.tsx
+      - src/game/asset-manifest.ts
+    dependencies: []
+    ux:
+      discovery: "Auto-shown on app open — passive, no player action"
+      feedback: "Animated paw-print progress indicator shows load progress"
+      onboarding: "Not applicable — loading is passive"
+    notes: "scaffold `loading` screen exists; needs Mystery Munch branding: 70s illustrated bg, animated logo, Scooby paw-print progress indicator. Infrastructure is correct; only visual content needs replacing."
+
+  - id: title-screen
+    name: "Title Screen"
+    status: content-gap
+    lifecycle_phase: TITLE
+    risk: MEDIUM
+    complexity: low
+    cos_required: []
+    ux_zones:
+      thumb_zone: center
+      touch_targets: [solve-mystery-button, continue-button, settings-gear]
+      feedback_surfaces: [title-card, scooby-entrance-animation]
+    affected_files:
+      - src/game/screens/StartScreen.tsx
+      - src/game/mygame/screens/startView.ts
+    dependencies: []
+    ux:
+      discovery: "Animated title card auto-plays on arrival"
+      feedback: "Button press triggers immediate visual depression + audio click"
+      onboarding: "New vs returning player fork: 'Solve the Mystery' vs 'Continue'"
+    notes: >
+      Maps to scaffold `start` screen (valid screen ID). Current startView.ts is DOM-mode stub
+      showing 'Start Screen' text and generic Play button. Needs: Mystery Munch title card, 'Solve
+      the Mystery' CTA, 'Continue' for returning players, Settings gear (44×44pt tap target,
+      top-right), Scooby peek-in animation. No Pixi required here (DOM SolidJS screen is correct).
+
+  - id: results-screen-win
+    name: "Level Complete / Win Screen"
+    status: content-gap
+    lifecycle_phase: OUTCOME
+    risk: MEDIUM
+    complexity: med
+    cos_required: [scoring]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: [next-level-button, replay-button]
+      feedback_surfaces: [star-animations, score-counter, clue-tile-reveals, scooby-portrait]
+    affected_files:
+      - src/game/screens/ResultsScreen.tsx
+    dependencies: [score-system, star-rating, clue-tile-collection]
+    ux:
+      discovery: "Auto-shown when win condition is met"
+      feedback: "Stars pop in sequentially (300ms each), score increments, clue tiles float up"
+      onboarding: "Staggered reveal teaches player what they earned"
+    notes: >
+      Scaffold `results` screen exists but shows generic 'Game Over' text and score. GDD requires
+      win branch: star animation (1–3 stars, pop effect), score display, clue tile reveal animation,
+      Scooby celebration, 'Next Level' CTA, optional 'Replay'. Collision noted: scaffold labels
+      screen 'Game Over' vs GDD brand copy 'Almost there, pal!' — content-gap not collision since
+      this is a GDD-authoring concern not a rule violation.
+
+  - id: results-screen-loss
+    name: "Loss Screen"
+    status: content-gap
+    lifecycle_phase: OUTCOME
+    risk: MEDIUM
+    complexity: med
+    cos_required: []
+    ux_zones:
+      thumb_zone: center
+      touch_targets: [keep-going-button, use-coins-button, try-next-time-button]
+      feedback_surfaces: [soft-overlay, scooby-worried-portrait, move-counter-ghost-text]
+    affected_files:
+      - src/game/screens/ResultsScreen.tsx
+    dependencies: [continue-system, snack-coins, move-counter]
+    ux:
+      discovery: "Auto-shown when moves reach 0 without win condition"
+      feedback: "Soft overlay (board still visible), staggered button slide-in (100ms apart)"
+      onboarding: "No countdown pressure — three equal-weight options shown calmly"
+    notes: >
+      Scaffold results screen shows 'Game Over' heading. GDD requires gentle loss: partial overlay
+      (board still visible through it), 'Almost there, pal!' copy (no 'GAME OVER'), Scooby worried
+      expression, 3 options staggered. Continue system (ad/coins) is a partial stub — see feature
+      `continue-system`. Both win and loss branch from the same `results` screen ID per scaffold.
+
+  # ── PARTIAL: game scaffold exists but is DOM mode stub; Pixi wiring is absent ──
+
+  - id: game-controller
+    name: "GameController — Pixi mode wiring"
+    status: partial
+    lifecycle_phase: PLAY
+    risk: HIGH
+    complexity: high
+    cos_required: [core-interaction, animated-dynamics]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: []
+      feedback_surfaces: []
+    affected_files:
+      - <game-root>/screens/gameController.ts
+      - <game-root>/GameController.ts
+    dependencies: [ecs-plugin, board-renderer, hud-renderer, input-handler]
+    ux:
+      discovery: "Not player-facing — infrastructure"
+      feedback: "Not player-facing — infrastructure"
+      onboarding: "Not player-facing — infrastructure"
+    notes: >
+      Scaffold gameController.ts exists in DOM mode (gameMode: 'dom'). GDD requires Pixi mode with:
+      ECS plugin init, setActiveDb, bridgeEcsToSignals, Application init, layer hierarchy
+      (bg/board/hud/ui), input routing via pointertap, GameController lifecycle contract per rule.
+      This is a partial because the file structure and contract exist, but the Pixi implementation
+      is commented out. This is the critical integration point that all other game features depend on.
+
+  - id: state-signals
+    name: "Game State — ECS + signal bridge"
+    status: partial
+    lifecycle_phase: PLAY
+    risk: HIGH
+    complexity: high
+    cos_required: [core-interaction, scoring]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: []
+      feedback_surfaces: []
+    affected_files:
+      - src/game/state.ts
+      - <game-root>/state/MysteryMunchPlugin.ts
+    dependencies: [game-controller]
+    ux:
+      discovery: "Not player-facing — infrastructure"
+      feedback: "Not player-facing — infrastructure"
+      onboarding: "Not player-facing — infrastructure"
+    notes: >
+      Current state.ts uses raw SolidJS signals (score, level). GDD + ECS rule requires ECS as
+      source of truth: score, movesRemaining, starsEarned, goalProgress, hauntedCellsCleared,
+      clueTilesCollected, boardPhase bridged via bridgeEcsToSignals. ECS plugin must encode the
+      full Mystery Munch resource schema.
+
+  # ── NEW FEATURES ──
+
+  - id: bubble-grid
+    name: "8×8 Bubble Grid — Board Layout & Rendering"
+    status: new
+    lifecycle_phase: PLAY
+    risk: HIGH
+    complexity: high
+    cos_required: [canvas, core-interaction, animated-dynamics]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: [board-cell]
+      feedback_surfaces: [board, cell-highlight, bubble-sprites]
+    affected_files:
+      - <game-root>/renderers/BoardRenderer.ts
+      - <game-root>/renderers/BlockRenderer.ts
+      - <game-root>/state/MysteryMunchPlugin.ts
+    dependencies: [game-controller, state-signals]
+    ux:
+      discovery: "Board fills center of screen; bubbles idle-wobble signals interactivity"
+      feedback: "Selection highlight on touched bubble; swap animation immediate on gesture"
+      onboarding: "Ghost-finger pointer in Tutorial Level 1 demonstrates first swap"
+    notes: >
+      8 columns × 8 rows. Grid occupies center 85% screen width, ~60% screen height.
+      Each cell 40×40pt visual, 44×44pt tap target (2pt padding). Portrait layout.
+      Cell types: normal, haunted (ghost-fog tint overlay), blocked (blocker piece), empty (silhouette).
+      Bubbles have idle wobble animation. Grid scales proportionally to viewport width.
+      Reserved: 15% height top (HUD), 12% height bottom (moves + action bar).
+
+  - id: bubble-colors
+    name: "5 Bubble Colors — Visual Distinctiveness"
+    status: new
+    lifecycle_phase: PLAY
+    risk: LOW
+    complexity: low
+    cos_required: [canvas]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: [bubble-sprite]
+      feedback_surfaces: [bubble-sprite, board]
+    affected_files:
+      - <game-root>/renderers/BlockRenderer.ts
+      - <game-root>/data/bubbleTypes.ts
+    dependencies: [bubble-grid]
+    ux:
+      discovery: "Five visually distinct glowing spheres (Amber, Teal, Violet, Coral, Lime)"
+      feedback: "Color + glow cue; idle wobble; tint shifts on hover/select"
+      onboarding: "Color differences apparent immediately at grid load"
+    notes: >
+      5 colors: Amber (golden-orange), Teal (seafoam-green), Violet (grape-purple),
+      Coral (pink-red), Lime (yellow-green). Each a glowing sphere with hand-drawn outline.
+      Must distinguish by color + icon + glow — not color alone (colorblind rule).
+      Color-minimum edge case: if <3 of any needed color remain, refill seeds additional.
+
+  - id: swap-interaction
+    name: "Swap Interaction — Drag Adjacent Bubble"
+    status: new
+    lifecycle_phase: PLAY
+    risk: HIGH
+    complexity: high
+    cos_required: [core-interaction, animated-dynamics]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: [bubble-sprite]
+      feedback_surfaces: [bubble-sprite, board-cell, swap-animation]
+    affected_files:
+      - <game-root>/input/SwapHandler.ts
+      - <game-root>/renderers/BoardRenderer.ts
+      - <game-root>/state/MysteryMunchPlugin.ts
+    dependencies: [bubble-grid, game-controller]
+    ux:
+      discovery: "Ghost-finger pointer in Tutorial 1 demos the gesture"
+      feedback: "Slide animation on valid swap; elastic snap-back with thud on invalid"
+      onboarding: "Tutorial Level 1: constrained board teaches one swap gesture"
+    notes: >
+      Input: drag one bubble to adjacent (up/down/left/right — no diagonal).
+      One continuous gesture (finger-down → drag → release). Swap detected on pointermove
+      at ~15px threshold, then animated. If no match: snap-back 150ms ease-in-out, no move consumed.
+      Boundary swaps rejected with snap-back. Input blocked during animation.
+      GDD specifies exact behavior: must use Pixi pointer events, touch-action:none on container.
+
+  - id: match-rules
+    name: "Match Rules — 3+ Same Color in Line"
+    status: new
+    lifecycle_phase: PLAY
+    risk: LOW
+    complexity: med
+    cos_required: [core-interaction, scoring]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: []
+      feedback_surfaces: [board, score-hud]
+    affected_files:
+      - <game-root>/state/logic/matchDetection.ts
+      - <game-root>/state/MysteryMunchPlugin.ts
+    dependencies: [bubble-grid, state-signals]
+    ux:
+      discovery: "Match pop is the core reward loop — player learns via first successful swap"
+      feedback: "Simultaneous pop animation 200ms on matched bubbles"
+      onboarding: "Tutorial 1 forces first match within constrained grid"
+    notes: >
+      3+ same-color in a row or column. Simultaneous pop (200ms). Pure game logic, no Pixi imports
+      in step()/actions. Must use seeded RNG for any random operations.
+
+  - id: gravity-fill
+    name: "Gravity Fill — Cascade & Refill"
+    status: new
+    lifecycle_phase: PLAY
+    risk: MEDIUM
+    complexity: high
+    cos_required: [animated-dynamics, core-interaction]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: []
+      feedback_surfaces: [board, bubble-sprites]
+    affected_files:
+      - <game-root>/state/logic/gravityFill.ts
+      - <game-root>/renderers/BoardRenderer.ts
+      - <game-root>/state/MysteryMunchPlugin.ts
+    dependencies: [match-rules, bubble-grid]
+    ux:
+      discovery: "Gravity is immediately apparent after first match — bubbles fall"
+      feedback: "80ms per cell fall with ease-out; landing bounce; new bubbles spawn from top"
+      onboarding: "Physical gravity cue teaches the mechanic without explanation"
+    notes: >
+      After match: cells above fall downward 80ms per cell, ease-out.
+      If top row has empty cells: spawn new bubbles at top, fall in.
+      Cascade: new matches from falls auto-trigger (no move cost).
+      Event queue pattern required (animated-dynamics CoS): logic resolves first, then visual playback.
+      Each piece needs stable identity for diff-based animation (not position-keyed).
+      Escalation per cascade depth (speed, bounce, particles).
+
+  - id: special-bubbles
+    name: "Special Bubbles — Scooby Snack, Mystery Machine, Ghost Buster"
+    status: new
+    lifecycle_phase: PLAY
+    risk: MEDIUM
+    complexity: high
+    cos_required: [core-interaction, animated-dynamics, canvas]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: [special-bubble-sprite]
+      feedback_surfaces: [board, board-dims, special-vfx]
+    affected_files:
+      - <game-root>/state/logic/specialBubbles.ts
+      - <game-root>/renderers/BlockRenderer.ts
+      - <game-root>/state/MysteryMunchPlugin.ts
+    dependencies: [match-rules, gravity-fill]
+    ux:
+      discovery: "Special bubble visually distinct (larger, icon, gold sparkle/idle anim)"
+      feedback: "Board dims 20% during special effect; VFX fills board area"
+      onboarding: "First special is created naturally; its visual distinctiveness signals tap-ability"
+    notes: >
+      Created by player-initiated matches only (not random). 3 types:
+      Scooby Snack (5-in-line → clear all of 1 random color),
+      Mystery Machine (L/T-shape → cross row+col clear),
+      Ghost Buster (2×2 square → 3×3 area clear).
+      Tap activates (costs 1 move). Swap-into-match: both effects trigger.
+      Special+Special chains: 3 defined combinations with sequential animation (200ms between).
+      In cascade path: specials do NOT auto-activate.
+
+  - id: blockers
+    name: "Blockers — Ghost Slime, Phantom Web, Haunted Crate, Monster Lock"
+    status: new
+    lifecycle_phase: PLAY
+    risk: MEDIUM
+    complexity: high
+    cos_required: [canvas, animated-dynamics]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: []
+      feedback_surfaces: [board, cell-blocker-overlay]
+    affected_files:
+      - <game-root>/state/logic/blockerLogic.ts
+      - <game-root>/renderers/BlockRenderer.ts
+      - <game-root>/data/blockerTypes.ts
+    dependencies: [match-rules, bubble-grid]
+    ux:
+      discovery: "Distinct visual per blocker type (ooze/web/crate/lock); HP counter visible"
+      feedback: "150ms crack/ooze damage animation per hit; 250ms dissolve on clear"
+      onboarding: "Tutorial Level 2 teaches Ghost Slime adjacent-match clearing"
+    notes: >
+      4 blocker types gated by chapter index.
+      Ghost Slime (1 hit, ch1), Phantom Web (2 hits, ch2), Haunted Crate (3 hits, ch3),
+      Monster Lock (special mechanic: requires Key Bubble adjacent swap, ch4).
+      HP counter decrements on hit. Blocker reveal on clear (normal cell or clue tile).
+      Monster Lock cannot be hit directly.
+
+  - id: haunted-cells
+    name: "Haunted Cells — Ghost-Fog Overlay & Clear Mechanic"
+    status: new
+    lifecycle_phase: PLAY
+    risk: LOW
+    complexity: med
+    cos_required: [canvas, animated-dynamics]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: []
+      feedback_surfaces: [board, cell-overlay]
+    affected_files:
+      - <game-root>/state/logic/hauntedCells.ts
+      - <game-root>/renderers/BoardRenderer.ts
+    dependencies: [match-rules, bubble-grid]
+    ux:
+      discovery: "Ghost-fog tint visually marks haunted cells; clearing reveals underlying art"
+      feedback: "Fog dissipates on clear (animated); cell beneath revealed"
+      onboarding: "Ch1 levels saturated with haunted cells; player learns through repeated action"
+    notes: >
+      Haunted cells: ghost-fog tint overlay on cell. Can still hold bubbles and participate in matches.
+      Clear condition: 1 adjacent match clears the haunt. Clearing reveals cell beneath.
+      Part of win condition: all haunted cells must be cleared.
+
+  - id: clue-tiles
+    name: "Clue Tiles — Hidden Beneath Cells, HUD Tray Collection"
+    status: new
+    lifecycle_phase: PLAY
+    risk: MEDIUM
+    complexity: med
+    cos_required: [canvas, animated-dynamics]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: []
+      feedback_surfaces: [board, hud-clue-tray]
+    affected_files:
+      - <game-root>/state/logic/clueTiles.ts
+      - <game-root>/renderers/HudRenderer.ts
+      - <game-root>/state/MysteryMunchPlugin.ts
+    dependencies: [haunted-cells, blockers, hud-renderer]
+    ux:
+      discovery: "Clue tray in HUD shows 'empty slots' — player sees missing clues to collect"
+      feedback: "400ms float animation when clue rises from board to HUD tray; label reveal"
+      onboarding: "First clue reveal creates aha moment connecting matches to mystery narrative"
+    notes: >
+      4 clue types: Footprint, Mask Fragment, Note Scrap, Snack Wrapper.
+      Beneath haunted cells and certain cleared blockers.
+      On reveal: 400ms float animation to HUD clue tray with label reveal.
+      Part of win condition: all chapter clue tiles required for villain reveal.
+      4 clue tiles per chapter distributed across 15 levels.
+
+  - id: hud-renderer
+    name: "HUD — Top Strip (Chapter, Moves, Stars, Clue Tray)"
+    status: new
+    lifecycle_phase: PLAY
+    risk: HIGH
+    complexity: med
+    cos_required: [canvas, scoring]
+    ux_zones:
+      thumb_zone: out-of-reach
+      touch_targets: []
+      feedback_surfaces: [hud-strip, move-counter, star-icons, clue-tray-strip]
+    affected_files:
+      - <game-root>/renderers/HudRenderer.ts
+      - <game-root>/state/MysteryMunchPlugin.ts
+    dependencies: [game-controller, state-signals]
+    ux:
+      discovery: "Top HUD strip always visible above board"
+      feedback: "Move counter animates on decrement; stars fill gold at score thresholds; clue thumbnails appear on collection"
+      onboarding: "HUD elements labeled/iconographic — chapter icon, numeral moves, ghost-icon stars"
+    notes: >
+      Top HUD strip: chapter icon (left), move counter (center, large numerals),
+      star targets (right, 3 ghost icons fill gold at score thresholds),
+      clue tray (top-right strip, clue thumbnails).
+      GPU (Pixi) layer per lifecycle.md wrapper matrix. ~15% height at top.
+      Scooby portrait bottom-right (small, reacts with expression/dialogue bubble auto-dismiss 2.5s).
+      Bottom: pause button (44×44pt, bottom-left).
+
+  - id: move-counter
+    name: "Move Counter — Decrement, Zero State, +5 Continue"
+    status: new
+    lifecycle_phase: PLAY
+    risk: MEDIUM
+    complexity: med
+    cos_required: [core-interaction, scoring]
+    ux_zones:
+      thumb_zone: out-of-reach
+      touch_targets: []
+      feedback_surfaces: [hud-strip, move-counter]
+    affected_files:
+      - <game-root>/state/MysteryMunchPlugin.ts
+      - <game-root>/renderers/HudRenderer.ts
+    dependencies: [hud-renderer, state-signals]
+    ux:
+      discovery: "Move counter center-top HUD, large numerals — always visible"
+      feedback: "100ms shake animation when counter hits 0"
+      onboarding: "Counter decrements visibly on each swap — teaches move budget passively"
+    notes: >
+      Decrements on every committed swap. Range 12–40 moves per level (procedural param).
+      At 0: move counter animates (100ms shake), board dims to 60% (200ms), loss sequence begins.
+      +5 moves via continue system. Level data stores move limit; ECS resource tracks remaining.
+
+  - id: score-system
+    name: "Scoring System — Match Size + Chain + Special Bonuses"
+    status: new
+    lifecycle_phase: PLAY
+    risk: LOW
+    complexity: med
+    cos_required: [scoring]
+    ux_zones:
+      thumb_zone: out-of-reach
+      touch_targets: []
+      feedback_surfaces: [hud-strip, score-counter]
+    affected_files:
+      - <game-root>/state/logic/scoringLogic.ts
+      - <game-root>/state/MysteryMunchPlugin.ts
+    dependencies: [match-rules, special-bubbles, state-signals]
+    ux:
+      discovery: "Score visible in HUD; increments on every match"
+      feedback: "Score counter animates to new value on each match"
+      onboarding: "Score feedback correlates size of match to size of increment"
+    notes: >
+      Multi-dimensional scoring per CoS scoring:
+      matchScore = (matchSize - 2) * 100 (3=100, 4=200, 5=300+)
+      chainMultiplier = cascadeDepth + 1 (first=x1, cascade=x2, x3...)
+      specialBonus = 500 per special triggered
+      moveEfficiency = baseMoves / actualMoves
+      levelScore = (matchScore * chainMultiplier + specialBonus) * moveEfficiency
+      1–3 stars at score thresholds (cosmetic only, no progression gate).
+      Stars: pure display. Score targets per level defined in level data.
+
+  - id: star-rating
+    name: "Star Rating — 1–3 Stars Cosmetic"
+    status: new
+    lifecycle_phase: OUTCOME
+    risk: LOW
+    complexity: low
+    cos_required: [scoring]
+    ux_zones:
+      thumb_zone: out-of-reach
+      touch_targets: []
+      feedback_surfaces: [hud-strip, results-screen]
+    affected_files:
+      - <game-root>/state/MysteryMunchPlugin.ts
+      - <game-root>/renderers/HudRenderer.ts
+    dependencies: [score-system]
+    ux:
+      discovery: "3 ghost-icon stars in HUD; fill gold as score thresholds reached mid-game"
+      feedback: "Stars pop in sequentially (300ms each, bouncy ease) on win screen"
+      onboarding: "Visual threshold markers in HUD teach star scoring during play"
+    notes: >
+      Cosmetic only — no progression gate. Thresholds defined per level.
+      3 ghost icons in HUD fill gold as score thresholds are crossed.
+      Win sequence: stars animate sequentially on level complete screen.
+
+  - id: win-condition
+    name: "Win Condition — Clear All Haunted Cells + Collect Clue Tiles"
+    status: new
+    lifecycle_phase: PLAY
+    risk: MEDIUM
+    complexity: med
+    cos_required: [core-interaction, scoring]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: []
+      feedback_surfaces: [board, hud-clue-tray]
+    affected_files:
+      - <game-root>/state/logic/winCondition.ts
+      - <game-root>/state/MysteryMunchPlugin.ts
+    dependencies: [haunted-cells, clue-tiles, score-system]
+    ux:
+      discovery: "HUD shows haunted cell count remaining + clue tray empty slots"
+      feedback: "Win fanfare + freeze board on condition met; staggered win sequence"
+      onboarding: "Level tutorial surfaces the win goal via initial state"
+    notes: >
+      Primary: all haunted cells cleared AND all required clue tiles collected.
+      Secondary: target_score_reached AND all required clue tiles collected.
+      Win sequence: 8-step staggered animation (pop+gravity → board freeze → jingle → stars → score → clues → Scooby dialogue → Next Level button).
+
+  - id: loss-condition
+    name: "Loss Condition — Out of Moves"
+    status: new
+    lifecycle_phase: PLAY
+    risk: MEDIUM
+    complexity: med
+    cos_required: [core-interaction]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: [keep-going, use-coins, try-next-time]
+      feedback_surfaces: [board-dim, loss-overlay]
+    affected_files:
+      - <game-root>/state/logic/lossCondition.ts
+      - <game-root>/state/MysteryMunchPlugin.ts
+    dependencies: [move-counter, continue-system]
+    ux:
+      discovery: "Move counter reaching 0 is visually dramatic (shake); loss overlay fades in"
+      feedback: "Soft overlay (board still visible); staggered button slide-in; no countdown pressure"
+      onboarding: "Gentle framing ('Almost there, pal!') removes fear of failure"
+    notes: >
+      Triggered: moves_remaining == 0 AND win_condition_not_met.
+      Loss sequence: move-counter shake → board dim 60% (200ms) → Scooby worried expression →
+      overlay fade (250ms) → copy resolves → 3 options stagger in (100ms apart).
+      No countdown timer, no flashing — by design.
+
+  - id: continue-system
+    name: "Continue System — Ad / Snack Coins for +5 Moves"
+    status: new
+    lifecycle_phase: OUTCOME
+    risk: MEDIUM
+    complexity: med
+    cos_required: []
+    ux_zones:
+      thumb_zone: center
+      touch_targets: [keep-going-button, use-coins-button, try-next-time-button]
+      feedback_surfaces: [loss-overlay, move-counter-ghost-text]
+    affected_files:
+      - <game-root>/systems/ContinueSystem.ts
+      - src/game/screens/ResultsScreen.tsx
+    dependencies: [loss-condition, snack-coins]
+    ux:
+      discovery: "3 options presented clearly; +5 shown in ghost text on move counter"
+      feedback: "Ad/coins confirm → board unfreezes, move counter increments with animation"
+      onboarding: "Options are self-explanatory icons + short labels"
+    notes: >
+      Three options on loss: 'Keep Going' (watch ad → +5 moves), 'Use Snack Coins' (spend 30 → +5), 'Try Next Time' (exit).
+      Ad integration is an open question (see open_questions).
+      Snack Coins currency is a meta-progression feature — for core pass, stub with signal placeholder.
+
+  - id: deadlock-detection
+    name: "Deadlock Detection — Auto-Reshuffle with Ruh-roh Animation"
+    status: new
+    lifecycle_phase: PLAY
+    risk: MEDIUM
+    complexity: med
+    cos_required: [core-interaction, animated-dynamics]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: []
+      feedback_surfaces: [board, bubbles]
+    affected_files:
+      - <game-root>/state/logic/deadlockDetection.ts
+      - <game-root>/renderers/BoardRenderer.ts
+    dependencies: [match-rules, bubble-grid]
+    ux:
+      discovery: "Deadlock auto-resolves — player sees board shake + shuffle"
+      feedback: "300ms shake + 'Ruh-roh!' dialogue from Scooby; bubbles lift/shuffle/land"
+      onboarding: "No player action required; no move consumed; self-explanatory"
+    notes: >
+      Trigger: no valid swap exists on board.
+      Animation: all bubbles lift (200ms) → shuffle positions (300ms) → land back (200ms).
+      Move count NOT decremented. Seeded RNG must produce a valid arrangement.
+
+  - id: level-generation
+    name: "Level Generation — Hybrid Procedural + Hand-Crafted"
+    status: new
+    lifecycle_phase: PLAY
+    risk: HIGH
+    complexity: high
+    cos_required: [core-interaction]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: []
+      feedback_surfaces: []
+    affected_files:
+      - <game-root>/state/logic/levelGen.ts
+      - <game-root>/data/handcrafted/
+      - <game-root>/data/tutorial/
+      - <game-root>/data/finales/
+      - <game-root>/state/logic/solvabilityCheck.ts
+    dependencies: [bubble-grid, blockers, haunted-cells, clue-tiles, match-rules]
+    ux:
+      discovery: "Level variety creates freshness across sessions"
+      feedback: "Not directly player-facing — produces the board the player sees"
+      onboarding: "Levels 1–30 hand-crafted to guarantee gentle onboarding"
+    notes: >
+      7-step algorithm: param sampling → grid shape → blocker placement → bubble fill →
+      haunted overlay → clue placement → solvability check (greedy solver, 500 iter, 3 attempts, 10 retries).
+      Seed formula: seed = (levelNumber * 31337) XOR (chapterIndex * 9973).
+      Hand-crafted: T1–T2 tutorial, levels 1–30 (ch1–2 early), chapter finales (15,30,45,60,75).
+      Fallback: chapter baseline template (8×8 full, 4 colors, 0 specials, 0 MonsterLocks, 25 moves).
+      Color-minimum enforcement: refill seeds extra color if <3 of needed color remain.
+      Grid shapes: Full 8×8 (ch1), Diagonal-cut corners (ch2), T-shape (ch3), Ghost silhouette (ch4–5).
+
+  - id: tutorial-flow
+    name: "Tutorial Levels T1 & T2 — Ghost-Finger Onboarding"
+    status: new
+    lifecycle_phase: PLAY
+    risk: MEDIUM
+    complexity: med
+    cos_required: [core-interaction, canvas]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: [tutorial-swap-target]
+      feedback_surfaces: [board, ghost-finger-pointer, scooby-speech-bubble]
+    affected_files:
+      - <game-root>/systems/TutorialSystem.ts
+      - <game-root>/data/tutorial/T1.ts
+      - <game-root>/data/tutorial/T2.ts
+    dependencies: [bubble-grid, swap-interaction, blockers]
+    ux:
+      discovery: "Ghost-finger pointer guides first swap; no text instructions needed"
+      feedback: "First successful match triggers celebratory response"
+      onboarding: "T1 teaches swap; T2 teaches adjacent-match blocker clearing. Constrained boards prevent wrong moves."
+    notes: >
+      T1: simplified 5×5 grid, 3 colors, ghost-finger pointer demos a swap. HUD hidden. Scooby speech bubble.
+      T2: 6×6 grid, 2 Ghost Slime blockers, ghost-finger points at cell adjacent to slime. HUD still hidden.
+      Both: frozen level data (no procedural override).
+      GDD: 'No text instructions — show via animated ghost-finger pointer' (onboarding as gameplay per lenses.md).
+
+  - id: chapter-interstitial
+    name: "Chapter Start Interstitial — Narrative Hook"
+    status: new
+    lifecycle_phase: PROGRESSION
+    risk: MEDIUM
+    complexity: low
+    cos_required: []
+    ux_zones:
+      thumb_zone: center
+      touch_targets: [lets-go-button]
+      feedback_surfaces: [chapter-title-card, teaser-text]
+    affected_files:
+      - src/game/screens/ResultsScreen.tsx
+    dependencies: [chapter-progression]
+    ux:
+      discovery: "Auto-shown at chapter boundary"
+      feedback: "Illustrated chapter title card; 3–4 word mystery teaser; 'Let's Go!' button"
+      onboarding: "Sets narrative context for the chapter's mystery"
+    notes: >
+      Shown before first level of each chapter. Maps to `results` screen via
+      interstitial-screen wrapper (per lifecycle.md wrapper matrix).
+      Content: chapter title card, Scooby + gang illustration, teaser copy, 'Let's Go!' CTA.
+
+  - id: chapter-complete-villain-reveal
+    name: "Chapter Complete / Villain Reveal Screen"
+    status: new
+    lifecycle_phase: OUTCOME
+    risk: MEDIUM
+    complexity: med
+    cos_required: []
+    ux_zones:
+      thumb_zone: center
+      touch_targets: [next-mystery-button]
+      feedback_surfaces: [villain-reveal-animation, clue-collection-display, scooby-expression]
+    affected_files:
+      - src/game/screens/ResultsScreen.tsx
+    dependencies: [clue-tiles, chapter-progression]
+    ux:
+      discovery: "Appears automatically after level 15 of each chapter"
+      feedback: "Animated unmask sequence (shadow → villain reveal); Scooby 'I knew it!' expression"
+      onboarding: "Narrative payoff for the chapter's clue collection"
+    notes: >
+      Triggered after level 15 (or last level) of a chapter when all clue tiles collected.
+      Animated unmask: shadowy figure → mask pulled off → villain name + motive.
+      All chapter clues displayed together. 'Next Mystery' CTA → next chapter interstitial.
+      Maps to `results` screen (win branch, chapter-finale state).
+
+  - id: first-time-cutscene
+    name: "First-Time Intro Cutscene — 4-Panel Illustrated Sequence"
+    status: new
+    lifecycle_phase: TITLE
+    risk: LOW
+    complexity: low
+    cos_required: []
+    ux_zones:
+      thumb_zone: center
+      touch_targets: [tap-to-advance, skip-button]
+      feedback_surfaces: [panel-illustrations]
+    affected_files:
+      - src/game/screens/StartScreen.tsx
+      - <game-root>/systems/CutsceneSystem.ts
+    dependencies: [title-screen]
+    ux:
+      discovery: "Auto-shown on first launch after 'Solve the Mystery' tap"
+      feedback: "Tap advances panel; skip button (44×44pt top-right) always available"
+      onboarding: "Establishes setting and companion before first level"
+    notes: >
+      4 illustrated panels (tap to advance): Mystery Machine arrives at mansion →
+      Scooby points at bubbles → villain shadow lurks → Scooby face 'Scooby-Dooby-Doo!'
+      Skip button top-right (44×44pt min). First-launch only.
+      Maps within `start` screen lifecycle or is a DOM overlay on start screen.
+
+  - id: chapter-progression
+    name: "Chapter Progression — 5 Chapters, 15 Levels Each"
+    status: new
+    lifecycle_phase: PROGRESSION
+    risk: MEDIUM
+    complexity: med
+    cos_required: []
+    ux_zones:
+      thumb_zone: center
+      touch_targets: []
+      feedback_surfaces: []
+    affected_files:
+      - <game-root>/state/MysteryMunchPlugin.ts
+      - <game-root>/data/chapterConfig.ts
+    dependencies: [level-generation, state-signals]
+    ux:
+      discovery: "Level counter + chapter icon in HUD shows chapter/level progress"
+      feedback: "Chapter complete triggers villain reveal; chapter start shows interstitial"
+      onboarding: "Each chapter introduces one new blocker type"
+    notes: >
+      5 chapters at launch, 15 levels each (75 total).
+      Content cadence: 1 chapter every 2 weeks post-launch.
+      chapter transitions: level 15 complete → villain reveal → next chapter interstitial.
+      Returning player: 'Continue' on title goes to last chapter start interstitial.
+      Chapter-gated blockers: ch1=Ghost Slime, ch2=Phantom Web, ch3=Haunted Crate, ch4=Monster Lock.
+
+  - id: board-states
+    name: "Board State Machine — Idle/Animating/Special/Won/Lost/Paused/Reshuffling"
+    status: new
+    lifecycle_phase: PLAY
+    risk: HIGH
+    complexity: med
+    cos_required: [core-interaction, animated-dynamics]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: []
+      feedback_surfaces: [board, board-overlay]
+    affected_files:
+      - <game-root>/state/MysteryMunchPlugin.ts
+      - <game-root>/renderers/BoardRenderer.ts
+    dependencies: [game-controller, swap-interaction, gravity-fill]
+    ux:
+      discovery: "Board state is implied by visual — animating board = input blocked"
+      feedback: "Dimming, overlays, Scooby reactions signal current state"
+      onboarding: "State transitions are self-evident through visual feedback"
+    notes: >
+      States: Idle (input allowed, idle wobble), Animating (input blocked, pieces moving),
+      Special Active (input blocked, board dims 20%, special VFX), Won (input blocked, win fanfare),
+      Lost (input blocked, loss overlay), Paused (gameplay input blocked, pause overlay),
+      Reshuffling (input blocked, shake+lift animation).
+      Input blocked in all non-Idle states. This is a core guardrail requirement.
+
+  # ── CONFLICT FEATURES ──
+
+  - id: scooby-companion
+    name: "Scooby Companion — Portrait, Expressions, Dialogue Bubbles"
+    status: conflict
+    lifecycle_phase: PLAY
+    risk: MEDIUM
+    complexity: med
+    cos_required: [canvas]
+    ux_zones:
+      thumb_zone: out-of-reach
+      touch_targets: []
+      feedback_surfaces: [scooby-portrait, dialogue-bubble]
+    affected_files:
+      - src/game/screens/useCompanionDialogue.ts
+      - <game-root>/renderers/CompanionRenderer.ts
+      - src/game/screens/GameScreen.tsx
+    dependencies: [game-controller, board-states]
+    ux:
+      discovery: "Scooby portrait always visible at bottom-right; reacts to events"
+      feedback: "Expression changes + dialogue bubble auto-dismiss after 2.5s"
+      onboarding: "Companion reactions reinforce player actions throughout tutorial"
+    notes: >
+      Scaffold has `useCompanionDialogue.ts` hook in src/game/screens/ — this is infrastructure
+      that can be reused/adapted. GDD companion is Scooby-Doo (specific character, GPU Pixi portrait
+      at bottom-right during gameplay, reactions to board events, auto-dismiss dialogue 2.5s).
+      Sub-classification: adapt — reuse companion-dialogue hook infrastructure, build GPU portrait renderer.
+
+  - id: game-mode-pixi
+    name: "gameMode Switch — DOM stub → Pixi GPU"
+    status: conflict
+    lifecycle_phase: PLAY
+    risk: HIGH
+    complexity: high
+    cos_required: [core-interaction, canvas, animated-dynamics]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: []
+      feedback_surfaces: []
+    affected_files:
+      - <game-root>/screens/gameController.ts
+    dependencies: [game-controller]
+    ux:
+      discovery: "Not player-facing — infrastructure switch"
+      feedback: "Not player-facing — infrastructure switch"
+      onboarding: "Not player-facing — infrastructure switch"
+    notes: >
+      Current gameController.ts is `gameMode: 'dom'` stub with DOM elements.
+      GDD explicitly requires a GPU (Pixi) game — board rendering, particles, animations.
+      Must switch to `gameMode: 'pixi'` and replace DOM content with Pixi Application init.
+      Sub-classification: adapt — the controller file and contract are reusable;
+      implementation body needs replacing with Pixi scaffolding.
+
+  - id: state-architecture
+    name: "State Architecture — Raw Signals → ECS Source of Truth"
+    status: conflict
+    lifecycle_phase: PLAY
+    risk: HIGH
+    complexity: high
+    cos_required: [core-interaction, scoring]
+    ux_zones:
+      thumb_zone: center
+      touch_targets: []
+      feedback_surfaces: []
+    affected_files:
+      - src/game/state.ts
+      - <game-root>/state/MysteryMunchPlugin.ts
+    dependencies: [game-controller]
+    ux:
+      discovery: "Not player-facing — infrastructure"
+      feedback: "Not player-facing — infrastructure"
+      onboarding: "Not player-facing — infrastructure"
+    notes: >
+      Current state.ts uses raw SolidJS signals (score, level) as game state.
+      ECS rule: ECS is source of truth; signals are DOM bridge only.
+      GDD's complex game state (board cells, blockers, haunted cells, clue tiles, moves, phase)
+      requires an ECS plugin (MysteryMunchPlugin.ts).
+      Sub-classification: adapt — state.ts signals remain as the DOM bridge; a new ECS plugin
+      provides the source of truth; bridgeEcsToSignals wires the two.
+
+conflicts:
+  - id: scooby-companion
+    sub: adapt
+    reason: "useCompanionDialogue hook infrastructure reusable; GPU portrait renderer is new"
+  - id: game-mode-pixi
+    sub: adapt
+    reason: "GameController contract and file exist; DOM implementation body replaces with Pixi init"
+  - id: state-architecture
+    sub: adapt
+    reason: "state.ts signals remain as DOM bridge; ECS plugin is additive layer on top"
+
+risk_areas:
+  - feature: game-controller
+    reason: "Central integration point — ECS init, Pixi app init, input routing, lifecycle. All batch-1 features depend on this being correct."
+  - feature: bubble-grid
+    reason: "Touches renderer, state, level-gen, HUD — board layout decisions cascade to viewport budget and all downstream features."
+  - feature: swap-interaction
+    reason: "Core input mechanism; pointer events, gesture detection, animation sequencing, input blocking — directly gates core-interaction CoS."
+  - feature: level-generation
+    reason: "7-step procedural algorithm with solvability check, seeded RNG, 6 rejection conditions — high implementation surface, no precedent in scaffold."
+  - feature: board-states
+    reason: "State machine governs all input blocking — if wrong, player can interrupt animations; breaks core-interaction CoS."
+
+open_questions:
+  - id: oq-ad-integration
+    question: "What ad network does 'Watch Ad for +5 moves' use? Is there a scaffold or SDK already integrated, or is this stubbed for core pass?"
+    context: "GDD specifies 'Watch Ad → +5 moves' as a continue option. No ad SDK visible in scaffold. Core pass may need to stub this as a no-op or mock."
+
+  - id: oq-snack-coins-scope
+    question: "Are Snack Coins (meta-currency for continue) a core-pass concern or deferred to a later pass? How is the currency balance persisted?"
+    context: "GDD references 'Snack Coins' as a spendable currency for continues. No persistence layer visible in scaffold. Core pass should clarify scope."
+
+  - id: oq-villain-reveal-assets
+    question: "Are villain reveal/unmask animations sprite-based (atlas) or procedural? How many villains are authored for launch (5 chapters)?"
+    context: "GDD describes an 'animated unmask sequence' for chapter complete. Asset complexity depends on answer — affects asset manifest planning."
+
+  - id: oq-chapter-map-navigation
+    question: "Does the 'level select / chapter map' screen referenced in the Loss Screen ('Try Next Time → returns to Chapter map / level select') map to an existing scaffold screen ID, or is it a new overlay?"
+    context: "GDD mentions 'chapter map' but only 4 valid screen IDs exist (loading/start/game/results). A chapter-map screen would violate the scaffold constraint. Resolution needed: overlay on results? Or is 'start' screen repurposed?"
+
+  - id: oq-color-alone-accessibility
+    question: "Bubbles are distinguished primarily by color. Is a colorblind mode (tint override + icon/pattern) in scope for core pass, or deferred?"
+    context: "UX core-guidelines.md requires not relying on color alone. GDD specifies 5 bubble colors with no explicit colorblind fallback. Core pass must at minimum plan for icon/shape secondary cue on each bubble."
+
+warnings:
+  - "collision:game-mode — gdd=pixi-gpu vs scaffold=dom-stub (src/game/mygame/screens/gameController.ts) — soft (adapt, not replace; guardrail #1 critical if DOM used in GPU game code after switch)"
+  - "collision:state-source-of-truth — gdd=signals-only (implicit) vs rule=ecs-source-of-truth (ecs-state.mdc) — critical (ECS must be source of truth per rule; signals demoted to bridge)"
+  - "collision:screen-id-chapter-map — gdd=chapter-map-screen vs scaffold=4-valid-ids (loading/start/game/results) (precedence.md § valid screen IDs) — critical (plan must route chapter-map to valid ID or overlay)"
+  - "collision:results-screen-copy — gdd='Almost there, pal!' vs scaffold='Game Over' (src/game/screens/ResultsScreen.tsx) — soft (content-gap; GDD wins on brand copy per allow-gdd-overrides=false default, both are valid)"
+  - "collision:bubble-color-alone — gdd=color-only distinguishers vs rule=never-color-alone (ux/core-guidelines.md) — soft (plan must add secondary cue: shape/icon per bubble type)"

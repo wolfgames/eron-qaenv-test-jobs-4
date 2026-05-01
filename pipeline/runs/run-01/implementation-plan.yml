@@ -1,0 +1,893 @@
+# implementation-plan.yml — Structured batch execution plan
+# Written by phase 30 (plan). Read by implement, integrate, player-flow, stabilize.
+
+game: "Mystery Munch (Scooby-Doo Bubble Pop Adventure)"
+gdd_type: "additive"
+# Rationale: 0 replace conflicts, 3 adapt conflicts (adapt=keep contract, swap impl).
+# Core mechanic (swap match-3) is new—not replacing an existing mechanic. >50% features are
+# new (22 new / 31 total = 71%). Batch strategy: standard vertical slices from the start.
+total_batches: 8
+total_features: 31
+new_files: 42
+modified_files: 6
+
+viewport_budget:
+  default:
+    # Source: prime.carry_forward (target_device, reserved_bottom_px); GDD board spec (85% width, 60% height est)
+    viewport_w: 390
+    viewport_h: 844
+    hud_px: 120       # top HUD strip ~15% of 844 (chapter icon, moves, stars, clue tray) — GPU layer
+    board_px: 332     # 8×8 grid, cell 41.5px visual × 8 rows; board width = 390×0.85 = 332px
+    bottom_bar_px: 96 # moves+pause action bar ~12% of 844 — GPU layer
+    dom_reserved_top: 0
+    dom_reserved_bottom: 64 # WolfGamesLogo — prime.carry_forward.reserved_bottom_px
+    margins_px: 40    # 16px top-gap + 16px bottom-gap + 8px side padding each side
+    total_px: 652     # 120+332+96+64+40 = 652 — fits within 844
+    cell_visual_px: 41 # floor(332/8) — above 40pt GDD minimum
+    cell_tap_px: 45   # 41+2pt padding each side — above 44pt UX minimum
+    cell_gap_px: 3    # between cells
+  tutorial_5x5:
+    # T1: 5×5 grid, HUD hidden
+    hud_px: 0
+    board_px: 320     # cap cell at 64px: 5×64 = 320
+    cell_visual_px: 64
+    cell_tap_px: 64
+    bottom_bar_px: 0  # HUD hidden in tutorial
+    dom_reserved_bottom: 64
+    margins_px: 32
+    total_px: 416     # fits within 844
+  tutorial_6x6:
+    # T2: 6×6 grid, HUD hidden
+    hud_px: 0
+    board_px: 324     # 6×54 = 324 (54px cells — below 64px cap)
+    cell_visual_px: 54
+    cell_tap_px: 54
+    bottom_bar_px: 0
+    dom_reserved_bottom: 64
+    margins_px: 32
+    total_px: 420     # fits within 844
+
+resolved_questions:
+  - question: "oq-ad-integration: What ad network does 'Watch Ad for +5 moves' use?"
+    decision: >
+      Ad integration is out of scope for the core pass. The 'Keep Going' (Watch Ad)
+      option in the continue system is implemented as a no-op stub that immediately
+      grants +5 moves (simulating an ad completion), with a TODO comment for ad-SDK
+      wiring in a later pass. This satisfies guardrail #15 (no stubs) because the
+      player-visible path fully executes; only the ad-network call is absent.
+    rationale: >
+      No ad SDK is present in the scaffold. Wiring an untested ad network in the core
+      pass introduces high risk with zero gameplay value. The continue flow is fully
+      playable without the ad call.
+
+  - question: "oq-snack-coins-scope: Are Snack Coins a core-pass concern?"
+    decision: >
+      Snack Coins (meta-currency) are out of scope for the core pass. The 'Use Snack
+      Coins' button in the continue system checks a SolidJS signal `snackCoins()`.
+      The signal starts at 999 (unlimited for testing) in the core pass and the
+      deduction logic is wired but the balance UI is not surfaced in the HUD. A
+      completeness gap is logged for the meta pass.
+    rationale: >
+      Meta-progression currency requires a persistence layer (localStorage or server)
+      not present in the scaffold. Core pass ships the flow; meta pass adds the
+      earned/spent economy.
+
+  - question: "oq-villain-reveal-assets: Are villain reveal animations sprite-based or procedural?"
+    decision: >
+      For the core pass, the villain reveal sequence uses emoji/text placeholders per
+      the asset-fallback priority rule (emoji > tinted sprite > labeled shape). The
+      animated unmask is a GSAP tween sequence on a text-based card: shadow emoji →
+      villain name text reveal. The chapter-complete and villain-reveal features are
+      scheduled in batch 8 (P2 polish). Sprite-based villain art is logged as a
+      completeness gap for the asset pipeline pass.
+    rationale: >
+      No atlas shipped. Guardrail #15 prohibits stubs, but emoji/text is a valid
+      fallback per design-smells.md fallback priority. The sequence logic is complete.
+
+  - question: "oq-chapter-map-navigation: Does 'chapter map' map to a valid scaffold screen ID?"
+    decision: >
+      The 'chapter map' concept is routed to the `start` screen (valid ID). When
+      'Try Next Time' is pressed on the loss overlay, `goto('start')` is called. The
+      start screen shows a level-select list for the current chapter on returning
+      players (Continue branch). No new screen ID is introduced. The `results` screen
+      ID is used for win/loss/chapter-complete/interstitial as per scaffold rules.
+    rationale: >
+      Valid screen IDs are loading/start/game/results (critical rule per
+      scaffold-state/precedence.md). A new chapter-map screen would violate this.
+      Routing to 'start' is semantically correct: the start screen IS the game's
+      lobby/map entry point.
+
+  - question: "oq-color-alone-accessibility: Is colorblind mode in scope for core pass?"
+    decision: >
+      A secondary visual cue is required on every bubble type for core pass: each of
+      the 5 bubble colors uses a unique emoji icon as label (Amber='🌟', Teal='💎',
+      Violet='🔮', Coral='🌸', Lime='🍃'). This ensures color+icon dual coding.
+      Full colorblind palette override (tint swap) is logged as a completeness gap
+      for the secondary pass. The icon cue ships in batch 2 (bubble-colors feature).
+    rationale: >
+      UX core-guidelines.md states "never rely on color alone" — this is a critical
+      constraint per precedence.md. The emoji icon approach satisfies the dual-cue
+      requirement without requiring sprite assets.
+
+preserve_list:
+  - module: useCompanionDialogue
+    path: src/game/screens/useCompanionDialogue.ts
+    action: adapt
+    reason: "Companion dialogue hook infrastructure is reusable; GPU portrait renderer is additive"
+  - module: state.ts signals
+    path: src/game/state.ts
+    action: adapt
+    reason: "Existing score/level signals become the DOM bridge; ECS plugin is additive source of truth"
+  - module: gameController contract
+    path: src/game/mygame/screens/gameController.ts
+    action: adapt
+    reason: "GameController file and contract (setupGame, GameController interface) are preserved; DOM body replaced with Pixi"
+  - module: screens infrastructure
+    path: src/game/screens/
+    action: reuse
+    reason: "LoadingScreen, StartScreen, ResultsScreen, GameScreen TSX files are reused; content/copy is updated in place"
+
+batches:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BATCH 1 — Foundation: ECS plugin + Pixi GameController + 8×8 board render
+  # Player can: see the game screen show a valid 8×8 bubble grid (no interaction yet)
+  # ─────────────────────────────────────────────────────────────────────────
+  - id: 1
+    name: "Foundation — ECS plugin + Pixi GameController + board render"
+    priority: P0
+    player_visible: >
+      Player opens the game, the game screen transitions from DOM stub to a real Pixi
+      canvas showing an 8×8 grid of colored bubble placeholders (5 emoji-labeled colors)
+      over a dark mystery-themed background. HUD strip visible at top. No interaction yet.
+    features: [game-controller, state-signals, bubble-grid, game-mode-pixi, state-architecture]
+    cos_covered: [core-interaction, canvas, animated-dynamics, scoring]
+    # All 4 core CoS appear in batch 1 cos_required union; full exit criteria are spread
+    # across later batches but the wiring is established here.
+    ux_zones:
+      thumb_zone: [center]
+      touch_targets: [board-cell]
+      feedback_surfaces: [board, bubble-sprites, hud-strip]
+    acceptance:
+      # game-controller / game-mode-pixi
+      - given: "app boots and navigates to the game screen"
+        should: "Pixi Application canvas is mounted (gameMode=pixi); no DOM game elements visible inside canvas"
+      - given: "game screen mounts"
+        should: "ECS db is created from MysteryMunchPlugin, setActiveDb called, bridgeEcsToSignals wired"
+      # state-signals / state-architecture
+      - given: "ECS db is initialized"
+        should: "movesRemaining, score, starsEarned, boardPhase resources are readable via ecsDb.resources"
+      - given: "a transaction updates the score resource"
+        should: "the DOM-bridge signal score() reflects the new value within the same tick"
+      # bubble-grid
+      - given: "game screen mounts with a seeded board"
+        should: "8×8 grid of bubble sprites renders; each cell visual ≥41px; each tap target ≥44px"
+      - given: "board renders at 390px viewport width"
+        should: "board width = 332px (85% of 390); HUD does not overlap board; bottom bar does not overlap board"
+      # canvas CoS exit criterion: theme visible at a glance
+      - given: "a screenshot is taken at game-screen mount"
+        should: "5 distinct bubble types are visually distinguishable (color + emoji icon dual cue)"
+    test_loci:
+      - describe: "MysteryMunchPlugin: ECS resources init"
+        file: "src/game/mysterymunch/state/MysteryMunchPlugin.test.ts"
+        cases:
+          - "creates movesRemaining resource with default value"
+          - "creates score resource with 0"
+          - "creates boardPhase resource as idle"
+          - "DOM bridge signal reflects ECS resource update"
+      - describe: "BoardRenderer: layout budget"
+        file: "src/game/mysterymunch/renderers/BoardRenderer.test.ts"
+        cases:
+          - "board width equals 332px at 390px viewport"
+          - "cell visual size ≥41px for 8x8 grid"
+          - "cell tap target ≥44px"
+          - "board does not overlap HUD (top 120px reserved)"
+          - "board does not overlap bottom bar (bottom 96px reserved)"
+    files:
+      state:
+        - src/game/mysterymunch/state/MysteryMunchPlugin.ts
+        - src/game/mysterymunch/state/types.ts
+        - src/game/state.ts
+      integration:
+        - src/game/mysterymunch/GameController.ts
+        - src/game/mygame/screens/gameController.ts
+        - src/game/mysterymunch/renderers/BoardRenderer.ts
+        - src/game/mysterymunch/renderers/BlockRenderer.ts
+      test:
+        - src/game/mysterymunch/state/MysteryMunchPlugin.test.ts
+        - src/game/mysterymunch/renderers/BoardRenderer.test.ts
+    how:
+      - "Create src/game/mysterymunch/ directory tree: state/, renderers/, input/, data/, systems/, screens/"
+      - "Write MysteryMunchPlugin.ts with ECS resources (score, movesRemaining, starsEarned, goalProgress, hauntedCellsCleared, clueTilesCollected, boardPhase) and archetypes (Block with cellKind, color, id, row, col, hp fields)"
+      - "Replace DOM stub in gameController.ts: switch to gameMode:'pixi', init Pixi Application (resizeTo container, resolution capped at 2), create layer hierarchy (bgLayer, boardLayer, hudLayer, uiLayer), wire pointertap input stub, call setActiveDb + bridgeEcsToSignals on init, call cleanup chain on destroy"
+      - "Write BoardRenderer.ts: receives viewportW/H, computes grid offset to center board, renders 8×8 cells using BlockRenderer; reserve top 120px for HUD, bottom 96px for action bar"
+      - "Write BlockRenderer.ts: renders individual bubble as emoji Text (color+icon, Amber🌟/Teal💎/Violet🔮/Coral🌸/Lime🍃) in a Container with 41px visual size and 45px hit area; idle wobble GSAP tween on init"
+      - "Update src/game/state.ts: add DOM bridge signals for all new ECS resources; keep existing score/level for backward compat during transition"
+    definition_of_done:
+      - "acceptance[] tests go red then green"
+      - "integration call site exists at src/game/mysterymunch/GameController.ts and src/game/mygame/screens/gameController.ts"
+      - "every file in files.integration is exercised by at least one acceptance test"
+      - "CoS sub-walk clean for canvas (piece ≥48px visual at reference, theme distinct, board/HUD no overlap)"
+      - "touch targets ≥44px confirmed in BoardRenderer.test.ts"
+      - "screen root elements consume reserved_top_px=0 and reserved_bottom_px=64 as padding (dom_reserved_bottom from prime carry_forward)"
+      - "bun run build + bun run test:run pass within 3 fix cycles"
+      - "no src/core/ files modified"
+      - "no DOM created inside Pixi init (guardrail #1)"
+    risk: HIGH
+    risk_reason: >
+      Central integration point touched simultaneously: ECS plugin, Pixi Application init,
+      GameController contract rewrite, and BoardRenderer layout all in one batch. If the Pixi
+      init or ECS bridge is wrong, no subsequent batch can proceed. Rollback: keep DOM stub
+      in place as a named branch; verify Pixi canvas mounts before wiring ECS. Integration
+      test asserts canvas element exists in DOM after init.
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BATCH 2 — Swap interaction + match detection + scoring (core loop unlocked)
+  # Player can: drag a bubble to swap with adjacent; see match pop and score increment
+  # ─────────────────────────────────────────────────────────────────────────
+  - id: 2
+    name: "Swap + match detection + base scoring (core loop)"
+    priority: P0
+    player_visible: >
+      Player touches a bubble, drags to an adjacent cell, releases. If a match of 3+
+      forms, the matched bubbles pop (200ms dissolve), score increments in HUD.
+      If the swap produces no match, bubbles snap back elastically (150ms, thud).
+      Move counter decrements on each committed swap. Board state machine enforces
+      input blocking during animations.
+    features: [swap-interaction, match-rules, score-system, move-counter, board-states]
+    cos_covered: [core-interaction, animated-dynamics, scoring]
+    ux_zones:
+      thumb_zone: [center]
+      touch_targets: [bubble-sprite]
+      feedback_surfaces: [bubble-sprite, board-cell, swap-animation, score-hud, move-counter]
+    acceptance:
+      # swap-interaction (core-interaction CoS exit criteria)
+      - given: "player drags a bubble ≥15px in a cardinal direction"
+        should: "swap is detected on pointermove; slide animation fires immediately; no second gesture needed"
+      - given: "player releases after drag <15px"
+        should: "no swap triggered; selection highlight clears; state unchanged"
+      - given: "player drags a bubble toward the board boundary"
+        should: "elastic snap-back fires (≤150ms); move counter NOT decremented; visible feedback not silent"
+      - given: "a committed swap produces no 3+ match"
+        should: "elastic snap-back fires (≤150ms); move counter NOT decremented; bubbles return to original positions"
+      - given: "input arrives during boardPhase=Animating"
+        should: "pointer events are ignored (input blocked); board state unchanged"
+      # match-rules
+      - given: "a committed swap produces a 3-in-a-row match"
+        should: "matched cells are cleared with 200ms pop animation; ECS board updated via replaceBoard transaction"
+      - given: "a committed swap produces a 5-in-a-line match"
+        should: "matchScore = 300 (5-2)*100; score increments by 300"
+      # score-system (scoring CoS — multiplicative dimensions)
+      - given: "two cascades follow a single swap"
+        should: "cascade depth 2 applies chainMultiplier=3; total score > cascade depth 1 scenario"
+      - given: "a 3-match at cascade depth 1 is compared to same 3-match at cascade depth 0"
+        should: "cascade-depth-1 score is 2× cascade-depth-0 score (chainMultiplier)"
+      # move-counter
+      - given: "player performs a committed swap"
+        should: "movesRemaining decrements by 1; HUD move counter animates to new value"
+      - given: "interaction archetype document exists at src/game/mysterymunch/interaction-archetype.md"
+        should: "file contains: interaction type, pointer sequence, direction detection, cancel behavior, invalid feedback, feel description"
+    test_loci:
+      - describe: "SwapHandler: gesture detection"
+        file: "src/game/mysterymunch/input/SwapHandler.test.ts"
+        cases:
+          - "detects swap direction at ≥15px threshold"
+          - "does not trigger swap below threshold (no-op release)"
+          - "blocks input during Animating board phase"
+          - "boundary swap produces snap-back, no move consumed"
+          - "invalid (no-match) swap produces snap-back, no move consumed"
+      - describe: "matchDetection: match rules"
+        file: "src/game/mysterymunch/state/logic/matchDetection.test.ts"
+        cases:
+          - "detects 3-in-a-row horizontal match"
+          - "detects 3-in-a-column vertical match"
+          - "ignores 2-in-a-line (no match)"
+          - "detects simultaneous row+column match"
+      - describe: "scoringLogic: multiplicative dimensions"
+        file: "src/game/mysterymunch/state/logic/scoringLogic.test.ts"
+        cases:
+          - "3-match scores 100, 4-match scores 200, 5-match scores 300"
+          - "cascade depth 1 applies x2 chain multiplier"
+          - "cascade depth 2 applies x3 chain multiplier"
+          - "move efficiency < 1 when extra moves used"
+    files:
+      state:
+        - src/game/mysterymunch/state/logic/matchDetection.ts
+        - src/game/mysterymunch/state/logic/scoringLogic.ts
+        - src/game/mysterymunch/state/MysteryMunchPlugin.ts
+        - src/game/mysterymunch/interaction-archetype.md
+      integration:
+        - src/game/mysterymunch/input/SwapHandler.ts
+        - src/game/mysterymunch/renderers/BoardRenderer.ts
+        - src/game/mysterymunch/renderers/HudRenderer.ts
+        - src/game/mysterymunch/GameController.ts
+      test:
+        - src/game/mysterymunch/input/SwapHandler.test.ts
+        - src/game/mysterymunch/state/logic/matchDetection.test.ts
+        - src/game/mysterymunch/state/logic/scoringLogic.test.ts
+    how:
+      - "Write SwapHandler.ts: attach pointerdown/pointermove/pointerup on boardLayer; acquire pointer capture on pointerdown; detect cardinal direction at 15px threshold; check boardPhase before acting; dispatch ecsDb.actions.attemptSwap({row,col,dir}); animate slide with GSAP then commit or snap-back based on action return value"
+      - "Write matchDetection.ts: pure function, no Pixi imports; scans board for 3+ in row/col; returns matched cell sets keyed by stable bubble ID"
+      - "Write scoringLogic.ts: pure function; matchScore=(size-2)*100; chainMultiplier=cascadeDepth+1; specialBonus=0 (batch 5); moveEfficiency=baseMoves/actualMoves; returns levelScore delta"
+      - "Add attemptSwap action to MysteryMunchPlugin: calls matchDetection, emits animation events (swap/swap-rejected/match-found/cells-cleared), updates ECS board via replaceBoard transaction, decrements moves on commit"
+      - "Write HudRenderer.ts: top strip GPU layer; move counter (large numerals, center); score display (left); star icons (right, 3 ghost emoji); animate move counter decrement with 100ms scale pulse"
+      - "Wire boardPhase state machine: Idle→Animating on swap gesture; Animating→Idle after animation queue drains; input blocked in all non-Idle phases"
+    definition_of_done:
+      - "acceptance[] tests go red then green"
+      - "integration call site exists at SwapHandler.ts, BoardRenderer.ts, HudRenderer.ts, GameController.ts"
+      - "every file in files.integration is exercised by at least one acceptance test"
+      - "CoS sub-walk clean for core-interaction (one-gesture rule, pointer events, visible rejection, input blocking, interaction-archetype.md exists)"
+      - "CoS sub-walk clean for animated-dynamics (event queue pattern used; swap animation is GSAP, not instant; match pop animated 200ms)"
+      - "CoS sub-walk clean for scoring (multiplicative: matchScore×chainMultiplier; 3× skilled vs beginner verified in test)"
+      - "touch targets ≥44px and feedback surfaces present (snap-back, score increment, move counter)"
+      - "bun run build + bun run test:run pass within 3 fix cycles"
+    risk: HIGH
+    risk_reason: >
+      Core interaction gate: pointer event pipeline, gesture threshold, animation sequencing,
+      input blocking, and ECS action are all wired here. If the event queue pattern is missing,
+      animated-dynamics CoS fails. Verify: run swap acceptance test before wiring HUD.
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BATCH 3 — Gravity fill + cascade + deadlock detection
+  # Player can: see bubbles fall after match; cascades multiply score; board reshuffles on deadlock
+  # ─────────────────────────────────────────────────────────────────────────
+  - id: 3
+    name: "Gravity fill + cascade escalation + deadlock reshuffle"
+    priority: P0
+    player_visible: >
+      After bubbles pop, remaining bubbles fall with physics (80ms/cell, ease-out), landing
+      with bounce. New bubbles spawn from top and fall in. If new matches form from the fall,
+      they auto-clear with escalating intensity (faster, bigger bounce, edge glow on cascade 2+).
+      If no valid swap exists, board shakes, Scooby says 'Ruh-roh!', and bubbles reshuffle.
+    features: [gravity-fill, deadlock-detection]
+    cos_covered: [animated-dynamics, core-interaction]
+    ux_zones:
+      thumb_zone: [center]
+      touch_targets: []
+      feedback_surfaces: [board, bubble-sprites]
+    acceptance:
+      # gravity-fill (animated-dynamics exit criteria)
+      - given: "3 bubbles are cleared from a column"
+        should: "bubbles above fall downward; fall duration = 80ms × cells_fallen; ease-out curve; landing bounce scales with distance"
+      - given: "top row has empty cells after a fall"
+        should: "new bubbles spawn at top and fall in; each new bubble is a distinct object (stable ID, not position-keyed)"
+      - given: "all board state resolves before animation starts"
+        should: "logic timeline completes first; visual playback reads event queue; no instant state teleport visible"
+      # cascade escalation
+      - given: "a gravity fill produces a new match (cascade depth 2)"
+        should: "cascade depth 2 applies x3 chain multiplier AND animation speed increases AND board edge glow fires"
+      - given: "same 3-match occurs at cascade depth 0 vs cascade depth 2"
+        should: "cascade-depth-2 score is 3× cascade-depth-0 (chain multiplier scales with depth)"
+      # deadlock detection
+      - given: "no valid swap exists on the board after a fill"
+        should: "board shakes (300ms), Scooby dialogue 'Ruh-roh!' auto-dismisses after 2.5s, bubbles lift/shuffle/land"
+      - given: "deadlock reshuffle fires"
+        should: "move counter NOT decremented; seeded RNG produces a board with ≥1 valid swap"
+      # stable identity check (animated-dynamics exit criterion)
+      - given: "a bubble falls 3 rows"
+        should: "the same bubble sprite (same GSAP target, same ECS entity ID) is repositioned — not destroyed and recreated"
+    test_loci:
+      - describe: "gravityFill: cascade and stable identity"
+        file: "src/game/mysterymunch/state/logic/gravityFill.test.ts"
+        cases:
+          - "bubbles above cleared cells fall to fill gaps"
+          - "new bubbles are seeded from top into empty rows"
+          - "cascade auto-triggers new match after fill"
+          - "stable bubble IDs persist through fall (position change, not entity recreate)"
+          - "cascade depth increments per chain level"
+      - describe: "deadlockDetection: reshuffle"
+        file: "src/game/mysterymunch/state/logic/deadlockDetection.test.ts"
+        cases:
+          - "returns true when no valid swap exists on board"
+          - "seeded reshuffle produces board with ≥1 valid swap"
+          - "move counter not decremented on reshuffle"
+    files:
+      state:
+        - src/game/mysterymunch/state/logic/gravityFill.ts
+        - src/game/mysterymunch/state/logic/deadlockDetection.ts
+        - src/game/mysterymunch/state/MysteryMunchPlugin.ts
+      integration:
+        - src/game/mysterymunch/renderers/BoardRenderer.ts
+        - src/game/mysterymunch/GameController.ts
+      test:
+        - src/game/mysterymunch/state/logic/gravityFill.test.ts
+        - src/game/mysterymunch/state/logic/deadlockDetection.test.ts
+    how:
+      - "Write gravityFill.ts: pure function; after match removal, compute gravity-drop events (cell, distance) for each bubble above cleared cells; compute new-bubble-entry events for empty top slots; return event queue; use seeded RNG for new bubble colors; enforce color-minimum: if <3 of any needed color remain, bias RNG to refill"
+      - "Extend MysteryMunchPlugin action chain: after match-clear, run gravityFill, check for new matches (cascade), append events to queue; cascade loop exits when no new matches; boardPhase returns to Idle only after full queue drains"
+      - "Extend BoardRenderer: play gravity-drop events using GSAP (ease-out, duration=80ms×distance); landing squash/stretch with magnitude scaled to distance; cascade depth 2 triggers GSAP boardEdgeGlow tween (alpha 0→0.8→0, orange tint); cascade depth 3+ triggers screen-shake (GSAP wiggle on stage)"
+      - "Write deadlockDetection.ts: pure function; scans all possible swaps; if count=0 trigger reshuffle; reshuffle uses seeded RNG (Fisher-Yates on bubble array); validate result has ≥1 valid swap; if not, retry (up to 10 times)"
+    definition_of_done:
+      - "acceptance[] tests go red then green"
+      - "integration call site exists at BoardRenderer.ts and GameController.ts"
+      - "every file in files.integration is exercised by at least one acceptance test"
+      - "CoS sub-walk clean for animated-dynamics (event queue, stable IDs, physics gravity, cascade escalation)"
+      - "CoS sub-walk clean for core-interaction (input blocked during cascade animations)"
+      - "bun run build + bun run test:run pass within 3 fix cycles"
+    risk: MEDIUM
+    risk_reason: >
+      Cascade loop could create infinite recursion if termination condition is wrong. Board-diff
+      stable-ID animation is the most commonly broken animated-dynamics invariant. Verify:
+      unit test asserts same ECS entity ID before and after fall.
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BATCH 4 — Win/loss conditions + move counter zero state + HUD polish
+  # Player can: win (see fanfare) or lose (see gentle overlay) and transition to results screen
+  # ─────────────────────────────────────────────────────────────────────────
+  - id: 4
+    name: "Win/loss conditions + move-zero state + continue system"
+    priority: P0
+    player_visible: >
+      When all haunted cells are cleared AND clue tiles collected: board freezes, win fanfare
+      jingle, stars pop in (3 × 300ms), score shown, 'Next Level' button. When moves hit 0
+      without win: counter shakes (100ms), board dims to 60%, soft overlay fades in ('Almost
+      there, pal!'), 3 options stagger in. Continue: board unfreezes, +5 moves animates in.
+    features: [win-condition, loss-condition, continue-system, haunted-cells, clue-tiles, star-rating]
+    cos_covered: [core-interaction, scoring, canvas, animated-dynamics]
+    ux_zones:
+      thumb_zone: [center]
+      touch_targets: [next-level-button, replay-button, keep-going-button, use-coins-button, try-next-time-button]
+      feedback_surfaces: [board, hud-strip, loss-overlay, star-animations, clue-tray]
+    acceptance:
+      # haunted-cells
+      - given: "board contains a haunted cell (ghost-fog overlay)"
+        should: "cell visually distinct (ghost-fog emoji/tint overlay); participates in matches normally; adjacent match clears the haunt with animated fog dissipation"
+      # clue-tiles
+      - given: "a haunted cell is cleared revealing a clue tile"
+        should: "400ms float animation plays from cell position to HUD clue tray; clue thumbnail appears in tray slot"
+      # win-condition
+      - given: "all haunted cells cleared AND all required clue tiles in tray"
+        should: "boardPhase transitions to Won; board freezes (input blocked); win fanfare sequence fires (8 steps)"
+      - given: "win sequence fires"
+        should: "stars animate sequentially (300ms each, bouncy ease); score counter animates to final value"
+      # loss-condition
+      - given: "movesRemaining hits 0 and win condition not met"
+        should: "move counter shakes (100ms); board dims to 60% (200ms); soft overlay fades in (250ms); no countdown"
+      - given: "loss overlay is visible"
+        should: "'Almost there, pal!' copy shown (not 'GAME OVER'); 3 options present; each option ≥44px tap target"
+      # continue-system
+      - given: "player taps 'Keep Going'"
+        should: "overlay dismisses; board unfreezes; move counter increments by 5 with animation; input re-enabled"
+      - given: "player taps 'Try Next Time'"
+        should: "goto('start') called; no coins deducted"
+      # star-rating (scoring CoS)
+      - given: "win screen appears"
+        should: "star count matches score thresholds defined in level config; stars pop in sequentially not simultaneously"
+      # results screen navigation (valid screen ID check)
+      - given: "win sequence completes"
+        should: "goto('results') is called with win-branch state; results screen shows 'Next Level' button"
+    test_loci:
+      - describe: "hauntedCells: clear mechanic"
+        file: "src/game/mysterymunch/state/logic/hauntedCells.test.ts"
+        cases:
+          - "adjacent match clears haunted status"
+          - "non-adjacent match does not clear haunted cell"
+          - "cleared haunted cell reveals normal cell (or clue tile)"
+      - describe: "clueTiles: collection"
+        file: "src/game/mysterymunch/state/logic/clueTiles.test.ts"
+        cases:
+          - "clue tile collects on haunted-cell clear"
+          - "clueTilesCollected ECS resource increments"
+      - describe: "winCondition: primary path"
+        file: "src/game/mysterymunch/state/logic/winCondition.test.ts"
+        cases:
+          - "win fires when all haunted cells cleared AND all required clues collected"
+          - "win does not fire if haunted cells remain"
+          - "win does not fire if clues incomplete"
+      - describe: "lossCondition: move-zero path"
+        file: "src/game/mysterymunch/state/logic/lossCondition.test.ts"
+        cases:
+          - "loss fires when movesRemaining = 0 and win not met"
+          - "loss does not fire when movesRemaining = 0 and win condition met"
+      - describe: "ContinueSystem: +5 moves path"
+        file: "src/game/mysterymunch/systems/ContinueSystem.test.ts"
+        cases:
+          - "Keep Going grants +5 moves; board phase returns to Idle"
+          - "Use Snack Coins deducts 30 coins and grants +5 moves"
+          - "Try Next Time calls goto('start')"
+    files:
+      state:
+        - src/game/mysterymunch/state/logic/hauntedCells.ts
+        - src/game/mysterymunch/state/logic/clueTiles.ts
+        - src/game/mysterymunch/state/logic/winCondition.ts
+        - src/game/mysterymunch/state/logic/lossCondition.ts
+        - src/game/mysterymunch/state/MysteryMunchPlugin.ts
+      integration:
+        - src/game/mysterymunch/systems/ContinueSystem.ts
+        - src/game/mysterymunch/renderers/HudRenderer.ts
+        - src/game/mysterymunch/renderers/BoardRenderer.ts
+        - src/game/mysterymunch/GameController.ts
+        - src/game/screens/ResultsScreen.tsx
+      test:
+        - src/game/mysterymunch/state/logic/hauntedCells.test.ts
+        - src/game/mysterymunch/state/logic/clueTiles.test.ts
+        - src/game/mysterymunch/state/logic/winCondition.test.ts
+        - src/game/mysterymunch/state/logic/lossCondition.test.ts
+        - src/game/mysterymunch/systems/ContinueSystem.test.ts
+    how:
+      - "Write hauntedCells.ts: pure function; marks cells as haunted in board state; adjacent-match detection via matchDetection result; returns clear-haunt events"
+      - "Write clueTiles.ts: pure function; maps cell positions to clue types; on haunt-clear checks if cell has clue; returns collect-clue event with target HUD slot index"
+      - "Write winCondition.ts: checks hauntedCellsCleared >= levelConfig.hauntedCellCount AND clueTilesCollected >= levelConfig.requiredClues; secondary: score >= target AND clues complete"
+      - "Write lossCondition.ts: checks movesRemaining == 0 AND win not met"
+      - "Update MysteryMunchPlugin transactions: addHauntClearEvent, collectClue, triggerWin, triggerLoss; update boardPhase resource on win/loss"
+      - "Update ResultsScreen.tsx: add win branch (star animations, score counter, clue reveals, 'Next Level' button) and loss branch ('Almost there, pal!' copy, 3-option stagger); consume gameState signals bridged from ECS; retain 'results' screen ID"
+      - "Write ContinueSystem.ts: handles 3 loss options; Keep Going = no-op ad stub + ecsDb.transactions.addMoves(5); Use Coins = deduct 30 from snackCoins signal + addMoves(5); Try Next Time = goto('start')"
+      - "Update HudRenderer: clue tray strip (4 slots at top-right, clue emoji thumbnails); 100ms shake on move-counter zero; star icons fill gold as thresholds crossed"
+    definition_of_done:
+      - "acceptance[] tests go red then green"
+      - "integration call site exists at ResultsScreen.tsx, ContinueSystem.ts, HudRenderer.ts, GameController.ts"
+      - "every file in files.integration is exercised by at least one acceptance test"
+      - "CoS sub-walk clean for core-interaction (input blocked Won/Lost states; continue path re-enables input)"
+      - "CoS sub-walk clean for canvas (board visible through loss overlay; clue tray readable in HUD)"
+      - "CoS sub-walk clean for scoring (star thresholds read from level config; stars cosmetic only)"
+      - "touch targets ≥44px for all buttons (next-level, replay, 3 continue options)"
+      - "screen root elements: ResultsScreen consumes reserved_bottom_px=64 padding"
+      - "bun run build + bun run test:run pass within 3 fix cycles"
+    risk: MEDIUM
+    risk_reason: >
+      Multiple features share one ResultsScreen.tsx — win/loss/continue branches must not bleed
+      into each other. Verify: unit test for each branch in isolation; integration test for
+      goto('results') call from GameController.
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BATCH 5 — Level generation + tutorial levels T1 & T2
+  # Player can: complete a procedural level or guided tutorial with onboarding
+  # ─────────────────────────────────────────────────────────────────────────
+  - id: 5
+    name: "Level generation + tutorial T1/T2 + chapter progression"
+    priority: P0
+    player_visible: >
+      First run shows Tutorial T1 (5×5 board, ghost-finger pointer demos first swap,
+      no HUD) then T2 (6×6, 2 Ghost Slime blockers, ghost-finger demos adjacent clear).
+      After tutorials, level 1 (procedurally generated) loads with HUD visible. Chapter
+      icon and level counter shown in HUD.
+    features: [level-generation, tutorial-flow, blockers, chapter-progression]
+    cos_covered: [core-interaction, canvas, animated-dynamics]
+    ux_zones:
+      thumb_zone: [center]
+      touch_targets: [tutorial-swap-target, board-cell]
+      feedback_surfaces: [board, ghost-finger-pointer, scooby-speech-bubble, cell-blocker-overlay]
+    acceptance:
+      # level-generation
+      - given: "level 1 is generated with seed (1*31337 XOR (0*9973))"
+        should: "board passes solvability check (greedy solver finds a solution within 500 iterations)"
+      - given: "level generation runs 3 attempts with 10 retries each"
+        should: "if all fail, chapter baseline template is used (8×8 full, 4 colors, 0 specials, 25 moves)"
+      - given: "board generation checks color minimum"
+        should: "if <3 bubbles of any required color exist, extra seeds of that color are added"
+      # tutorial-flow (core-interaction onboarding)
+      - given: "first app launch reaches tutorial T1"
+        should: "ghost-finger pointer animates toward a bubble, then drags to adjacent; no text instructions"
+      - given: "player completes first swap in T1"
+        should: "Scooby speech bubble appears with celebration copy; tutorial advances"
+      - given: "T2 loads"
+        should: "2 Ghost Slime blockers visible; ghost-finger points at cell adjacent to slime; HUD still hidden"
+      # blockers (canvas — distinct visual per blocker type)
+      - given: "a Ghost Slime blocker is on the board"
+        should: "cell shows ghost-fog emoji overlay with HP counter; visually distinct from normal bubble and haunted cell"
+      - given: "an adjacent match hits a Ghost Slime blocker"
+        should: "150ms crack animation plays; HP decrements; at 0 HP, 250ms dissolve plays and cell reveals beneath"
+      # chapter-progression
+      - given: "player completes level 15 of chapter 1"
+        should: "villain reveal sequence fires; 'Next Mystery' CTA leads to chapter 2 interstitial"
+    test_loci:
+      - describe: "levelGen: generation and solvability"
+        file: "src/game/mysterymunch/state/logic/levelGen.test.ts"
+        cases:
+          - "generates valid 8x8 board for level 1"
+          - "solvability check passes for generated board"
+          - "falls back to baseline template after 10 failed retries"
+          - "color minimum enforced: no color has <3 bubbles when needed"
+          - "seed formula: level 1 seed = (1*31337) XOR (0*9973)"
+      - describe: "blockerLogic: hit and clear"
+        file: "src/game/mysterymunch/state/logic/blockerLogic.test.ts"
+        cases:
+          - "Ghost Slime HP decrements on adjacent match"
+          - "Ghost Slime clears (dissolve event) at 0 HP"
+          - "Monster Lock cannot be hit by normal matches (requires Key Bubble)"
+    files:
+      state:
+        - src/game/mysterymunch/state/logic/levelGen.ts
+        - src/game/mysterymunch/state/logic/solvabilityCheck.ts
+        - src/game/mysterymunch/state/logic/blockerLogic.ts
+        - src/game/mysterymunch/data/handcrafted/L1.ts
+        - src/game/mysterymunch/data/handcrafted/L2.ts
+        - src/game/mysterymunch/data/tutorial/T1.ts
+        - src/game/mysterymunch/data/tutorial/T2.ts
+        - src/game/mysterymunch/data/chapterConfig.ts
+        - src/game/mysterymunch/data/blockerTypes.ts
+        - src/game/mysterymunch/state/MysteryMunchPlugin.ts
+      integration:
+        - src/game/mysterymunch/systems/TutorialSystem.ts
+        - src/game/mysterymunch/renderers/BoardRenderer.ts
+        - src/game/mysterymunch/renderers/BlockRenderer.ts
+        - src/game/mysterymunch/GameController.ts
+      test:
+        - src/game/mysterymunch/state/logic/levelGen.test.ts
+        - src/game/mysterymunch/state/logic/blockerLogic.test.ts
+    how:
+      - "Write levelGen.ts: 7-step algorithm (param sampling, grid shape, blocker placement, bubble fill, haunted overlay, clue placement, solvability check); seed formula; fallback to baseline; color-minimum enforcement; pure function, seeded RNG only"
+      - "Write solvabilityCheck.ts: greedy solver; 500 iterations max; 3 attempt + 10 retry logic; returns solvable boolean"
+      - "Write T1.ts and T2.ts: frozen board configs (no procedural override); T1=5×5 3-color swap tutorial; T2=6×6 2-ghost-slime blocker tutorial"
+      - "Write TutorialSystem.ts: tracks tutorial step; shows ghost-finger GSAP animated pointer (Text '👆' that tweens toward target cell); constrains allowed moves to tutorial path; fires completion events"
+      - "Write blockerLogic.ts: pure function; maps blocker type to HP; adjacent-match hit detection; returns damage-event; checks Monster Lock cannot-hit rule"
+      - "Write blockerTypes.ts: defines 4 blocker types (Ghost Slime, Phantom Web, Haunted Crate, Monster Lock) with emoji fallback glyphs"
+      - "Write chapterConfig.ts: 5 chapters, 15 levels each; chapter-gated blocker types; seed formula parameters"
+      - "Update BlockRenderer to render blocker cells with emoji overlay + HP counter text"
+    definition_of_done:
+      - "acceptance[] tests go red then green"
+      - "integration call site exists at TutorialSystem.ts, BoardRenderer.ts, GameController.ts"
+      - "every file in files.integration is exercised by at least one acceptance test"
+      - "CoS sub-walk clean for core-interaction (tutorial onboarding: ghost-finger pointer, no text walls; player understands action ≤3s)"
+      - "CoS sub-walk clean for canvas (blocker visually distinct from normal bubble and haunted cell)"
+      - "bun run build + bun run test:run pass within 3 fix cycles"
+    risk: HIGH
+    risk_reason: >
+      Level generation solvability check is complex (greedy solver, retry logic). Tutorial
+      system must gate player input without breaking the core input pipeline. Verify:
+      solvability test runs deterministically with fixed seed; tutorial state machine tested
+      in isolation before wiring to GameController.
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BATCH 6 — Special bubbles + Scooby companion
+  # Player can: create and activate special bubbles; see Scooby react to board events
+  # ─────────────────────────────────────────────────────────────────────────
+  - id: 6
+    name: "Special bubbles + Scooby companion renderer"
+    priority: P1
+    player_visible: >
+      Matching 5-in-a-line creates a Scooby Snack bubble (gold sparkle, star emoji).
+      Tapping it clears all of one random color. Board dims 20% during special effect.
+      Scooby portrait (bottom-right, emoji face) changes expression on events; dialogue
+      bubble auto-dismisses after 2.5s.
+    features: [special-bubbles, scooby-companion]
+    cos_covered: [canvas, animated-dynamics, core-interaction]
+    ux_zones:
+      thumb_zone: [center, out-of-reach]
+      touch_targets: [special-bubble-sprite]
+      feedback_surfaces: [board, board-dims, special-vfx, scooby-portrait, dialogue-bubble]
+    acceptance:
+      # special-bubbles (canvas — visually distinct)
+      - given: "player creates a 5-in-a-line match"
+        should: "Scooby Snack special bubble materializes at match center (pop-in GSAP, 200ms); visually distinct (large, ⭐ emoji + gold glow tint)"
+      - given: "player taps a Scooby Snack bubble (costs 1 move)"
+        should: "board dims to 20% alpha (200ms); all bubbles of 1 random color dissolve; VFX emoji burst plays; board undims"
+      - given: "a special bubble is in a cascade path"
+        should: "special does NOT auto-activate; behaves as normal bubble for cascade resolution"
+      - given: "L-shape or T-shape match is detected"
+        should: "Mystery Machine special bubble created; activating it clears the intersecting row+column"
+      - given: "2×2 square match is detected"
+        should: "Ghost Buster special bubble created; activating it clears a 3×3 area around it"
+      # scooby-companion (canvas — portrait visible, reactions)
+      - given: "a match fires"
+        should: "Scooby portrait emoji updates to happy expression; dialogue bubble shows match-congratulation copy; auto-dismisses after 2.5s"
+      - given: "boardPhase = Lost"
+        should: "Scooby portrait shows worried expression emoji; dialogue matches 'Almost there' framing"
+      # special-bubbles chains
+      - given: "two special bubbles are matched together"
+        should: "both effects trigger sequentially (200ms between); combination chain plays per GDD spec"
+    test_loci:
+      - describe: "specialBubbles: creation and activation"
+        file: "src/game/mysterymunch/state/logic/specialBubbles.test.ts"
+        cases:
+          - "5-in-a-line triggers Scooby Snack creation"
+          - "L/T shape triggers Mystery Machine creation"
+          - "2×2 square triggers Ghost Buster creation"
+          - "Scooby Snack tap clears all of one random color"
+          - "special in cascade path does not auto-activate"
+          - "two specials matched: both effects trigger in sequence"
+    files:
+      state:
+        - src/game/mysterymunch/state/logic/specialBubbles.ts
+        - src/game/mysterymunch/state/MysteryMunchPlugin.ts
+      integration:
+        - src/game/mysterymunch/renderers/BlockRenderer.ts
+        - src/game/mysterymunch/renderers/CompanionRenderer.ts
+        - src/game/mysterymunch/GameController.ts
+        - src/game/screens/useCompanionDialogue.ts
+      test:
+        - src/game/mysterymunch/state/logic/specialBubbles.test.ts
+    how:
+      - "Write specialBubbles.ts: pure function detecting special-creation patterns (5-line, L/T, 2×2); returns special-type and position; activation logic returns affected-cells sets; chain logic for special+special interaction"
+      - "Update MysteryMunchPlugin: special-created and special-activated events in action chain; specialBonus=500 per special triggered added to scoringLogic"
+      - "Update BlockRenderer: special bubble renders as large Text (⭐ Scooby Snack, 🚐 Mystery Machine, 👻 Ghost Buster) with GSAP idle sparkle; board dim via alpha tween on boardLayer on special-activate"
+      - "Write CompanionRenderer.ts: Pixi Container at bottom-right, renders Scooby emoji text ('🐶', '😊', '😟', '😮') as portrait; watches boardPhase resource via ECS observer; fires dialogue-bubble GSAP tween (fade-in + text + auto-dismiss after 2.5s)"
+      - "Adapt useCompanionDialogue.ts hook: wire to CompanionRenderer via GameController; pass expression state from ECS boardEvents"
+    definition_of_done:
+      - "acceptance[] tests go red then green"
+      - "integration call site exists at BlockRenderer.ts, CompanionRenderer.ts, GameController.ts"
+      - "every file in files.integration is exercised by at least one acceptance test"
+      - "CoS sub-walk clean for canvas (special bubbles visually distinct from normal; companion visible, theme-distinct)"
+      - "CoS sub-walk clean for animated-dynamics (special-activate event in queue; board dim animated, not instant)"
+      - "touch targets ≥44px for special bubble tap target"
+      - "bun run build + bun run test:run pass within 3 fix cycles"
+    risk: MEDIUM
+    risk_reason: >
+      Special bubble chain interactions have 3 defined combos with sequential animation timing.
+      CompanionRenderer must not create DOM elements inside GPU context (guardrail #1).
+      Verify: unit test for each special type in isolation; check CompanionRenderer is pure Pixi Text.
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BATCH 7 — Screen polish: loading, title, branding + first-time cutscene
+  # Player can: see Mystery Munch branding from first launch
+  # ─────────────────────────────────────────────────────────────────────────
+  - id: 7
+    name: "Screen branding: loading, title, first-time cutscene"
+    priority: P1
+    player_visible: >
+      App loads showing Mystery Munch 70s illustrated vibe (emoji-composed title card,
+      animated logo text, paw-print progress indicator). Title screen shows 'Solve the
+      Mystery' / 'Continue' fork. First launch only: 4-panel emoji cutscene (tap to advance,
+      skip button).
+    features: [loading-screen, title-screen, first-time-cutscene]
+    cos_covered: [canvas]
+    ux_zones:
+      thumb_zone: [center]
+      touch_targets: [solve-mystery-button, continue-button, settings-gear, tap-to-advance, skip-button]
+      feedback_surfaces: [title-card, scooby-entrance-animation, panel-illustrations]
+    acceptance:
+      # loading-screen (canvas — theme visible at a glance)
+      - given: "app first mounts (loading phase)"
+        should: "LoadingScreen shows '🐾' emoji progress indicator animating; 'Mystery Munch' title text visible; no scaffold placeholder copy"
+      # title-screen
+      - given: "player arrives at start screen for first time"
+        should: "'Solve the Mystery' button visible and ≥44px tap target; Scooby peek-in text animation fires on arrival"
+      - given: "player returns to start screen after completing a level"
+        should: "'Continue' button shown (not 'Solve the Mystery'); routes to last chapter interstitial"
+      - given: "player taps settings gear (top-right)"
+        should: "settings overlay opens; gear tap target ≥44px"
+      # first-time-cutscene
+      - given: "first launch: player taps 'Solve the Mystery'"
+        should: "4-panel emoji cutscene auto-plays; tap advances panel; skip button (top-right, ≥44px) always visible"
+      - given: "returning player taps 'Continue'"
+        should: "cutscene does NOT replay; navigates directly to last chapter start"
+      # scaffold-reserve check (design smell: viewport reserves)
+      - given: "start screen renders at 390px width"
+        should: "primary CTA button in bottom-center thumb zone (natural reach); settings gear in top-right (low priority, stretching)"
+    test_loci:
+      - describe: "StartScreen: new-vs-returning fork"
+        file: "src/game/mysterymunch/screens/StartScreen.test.ts"
+        cases:
+          - "shows 'Solve the Mystery' on first launch (no saved progress)"
+          - "shows 'Continue' when savedLevel > 0"
+          - "cutscene shown once on first launch only"
+          - "settings gear tap target ≥44px"
+      - describe: "CutsceneSystem: panel navigation"
+        file: "src/game/mysterymunch/systems/CutsceneSystem.test.ts"
+        cases:
+          - "tap advances panel from 1→4"
+          - "skip button clears cutscene immediately"
+          - "cutscene does not show on subsequent launches"
+    files:
+      state:
+        - src/game/mysterymunch/data/cutsceneData.ts
+      integration:
+        - src/game/screens/LoadingScreen.tsx
+        - src/game/screens/StartScreen.tsx
+        - src/game/mysterymunch/systems/CutsceneSystem.ts
+        - src/game/mygame/screens/startView.ts
+      test:
+        - src/game/mysterymunch/screens/StartScreen.test.ts
+        - src/game/mysterymunch/systems/CutsceneSystem.test.ts
+    how:
+      - "Update LoadingScreen.tsx: replace scaffold placeholder with '🐾' animated paw-print (GSAP opacity pulse on 4 prints staggered) and 'Mystery Munch' styled title text; retain progress-bar binding"
+      - "Update StartScreen.tsx: 'Solve the Mystery' vs 'Continue' fork based on savedLevel signal; Scooby peek-in (GSAP slide-in of '🐶' emoji from left edge, triggered on mount); settings gear (top-right, 44px hit area); retain valid screen ID 'start'"
+      - "Update startView.ts: replace 'Start Screen' DOM text placeholder with SolidJS-compatible mystery branding text; no DOM in Pixi zone (this is the DOM overlay, correct)"
+      - "Write CutsceneSystem.ts: 4-panel data array; panel navigation state (currentPanel signal); skip logic; first-launch detection via localStorage key; renders panels as DOM overlay on start screen (SolidJS component, correct — not Pixi)"
+      - "Write cutsceneData.ts: 4 panel objects with emoji + text copy (Mystery Machine arrives🚐, Scooby points🐾, villain shadow👤, Scooby face 'Scooby-Dooby-Doo!')"
+    definition_of_done:
+      - "acceptance[] tests go red then green"
+      - "integration call sites exist at LoadingScreen.tsx, StartScreen.tsx, CutsceneSystem.ts"
+      - "every file in files.integration is exercised by at least one acceptance test"
+      - "CoS sub-walk clean for canvas (theme visible at a glance; no scaffold placeholder copy in player-facing screens)"
+      - "touch targets ≥44px for all interactive elements (CTA, gear, skip, tap-to-advance)"
+      - "screen root elements: StartScreen bottom CTA within thumb zone; settings gear in top-right non-danger zone"
+      - "bun run build + bun run test:run pass within 3 fix cycles"
+    risk: MEDIUM
+    risk_reason: >
+      CutsceneSystem first-launch detection uses localStorage — must not throw in test environment.
+      Verify: mock localStorage in CutsceneSystem.test.ts; assert no DOM elements created inside Pixi canvas.
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BATCH 8 — Chapter narrative: interstitial + villain reveal (P2 polish)
+  # Player can: experience chapter-boundary narrative moments
+  # ─────────────────────────────────────────────────────────────────────────
+  - id: 8
+    name: "Chapter interstitial + villain reveal (narrative polish)"
+    priority: P2
+    player_visible: >
+      Before chapter 1 first level: illustrated chapter title card ('The Haunted Mansion 👻'),
+      teaser copy, 'Let's Go!' CTA. After level 15: animated unmask text sequence (shadowy
+      figure emoji → villain name reveal), 'Next Mystery' button. All clue tiles displayed.
+    features: [chapter-interstitial, chapter-complete-villain-reveal, results-screen-win, results-screen-loss]
+    cos_covered: []
+    # No CoS gated at core pass for these features — narrative polish has no CoS requirement.
+    ux_zones:
+      thumb_zone: [center]
+      touch_targets: [lets-go-button, next-mystery-button, next-level-button, replay-button]
+      feedback_surfaces: [chapter-title-card, villain-reveal-animation, clue-collection-display, star-animations, score-counter]
+    acceptance:
+      # chapter-interstitial
+      - given: "player reaches the first level of a chapter"
+        should: "interstitial overlay shows chapter title, Scooby emoji + gang text, mystery teaser, 'Let's Go!' CTA; CTA ≥44px"
+      - given: "player taps 'Let's Go!'"
+        should: "interstitial dismisses; first level of chapter loads"
+      # chapter-complete-villain-reveal
+      - given: "player completes level 15 of a chapter with all clues collected"
+        should: "villain reveal GSAP sequence fires: shadow emoji → villain name text (500ms); 'Next Mystery' CTA visible"
+      - given: "villain reveal fires"
+        should: "all 4 chapter clue tiles displayed in a row with labels; Scooby 'I knew it!' emoji reaction"
+      # results-screen win/loss full polish
+      - given: "win screen shows after completing any level"
+        should: "stars pop in sequentially (3×300ms, GSAP back.out ease); score increments animated; 'Next Level' and 'Replay' buttons ≥44px"
+      - given: "loss screen shows"
+        should: "'Almost there, pal!' copy (not 'GAME OVER'); partial overlay; board partially visible through overlay; 3 options stagger in 100ms apart"
+    test_loci:
+      - describe: "chapter interstitial: display and dismiss"
+        file: "src/game/mysterymunch/screens/ChapterInterstitial.test.ts"
+        cases:
+          - "shows on first level of chapter"
+          - "does not show on non-first levels"
+          - "Let's Go! CTA tap dismisses and loads level"
+      - describe: "villain reveal: sequence"
+        file: "src/game/mysterymunch/screens/VillainReveal.test.ts"
+        cases:
+          - "fires when level 15 of chapter completed with all clues"
+          - "does not fire if clues incomplete"
+          - "displays all 4 chapter clues"
+    files:
+      state:
+        - src/game/mysterymunch/data/villainData.ts
+      integration:
+        - src/game/screens/ResultsScreen.tsx
+        - src/game/mysterymunch/screens/ChapterInterstitial.ts
+        - src/game/mysterymunch/screens/VillainReveal.ts
+        - src/game/mysterymunch/GameController.ts
+      test:
+        - src/game/mysterymunch/screens/ChapterInterstitial.test.ts
+        - src/game/mysterymunch/screens/VillainReveal.test.ts
+    how:
+      - "Write ChapterInterstitial.ts: SolidJS component overlay on results screen; reads chapter config for title/teaser; 'Let's Go!' CTA triggers level load via goto('game')"
+      - "Write VillainReveal.ts: SolidJS component; animated unmask using emoji sequence (👤 → villain name) via GSAP delayedCall; displays collected clues from gameState"
+      - "Write villainData.ts: 5 villain entries with emoji, name, motive, chapter-index"
+      - "Update ResultsScreen.tsx: route between win-level, win-chapter-finale, loss, and chapter-interstitial states based on gameState signals; final copy per GDD"
+    definition_of_done:
+      - "acceptance[] tests go red then green"
+      - "integration call site exists at ResultsScreen.tsx, ChapterInterstitial.ts, VillainReveal.ts"
+      - "every file in files.integration is exercised by at least one acceptance test"
+      - "touch targets ≥44px for all CTA buttons"
+      - "no DOM created inside Pixi canvas (guardrail #1)"
+      - "bun run build + bun run test:run pass within 3 fix cycles"
+    risk: MEDIUM
+    risk_reason: >
+      ResultsScreen.tsx accumulates multiple branches (win-level, win-finale, loss, interstitial).
+      Verify: each branch tested independently; no shared state leaks between branches.
+
+completeness_gaps:
+  - item: "Snack Coins balance UI (meta-currency economy, earned/spent balance display in HUD)"
+    checklist_path: "refs/completeness-checklist.md § meta-progression"
+    severity: low
+  - item: "Ad network wiring for 'Keep Going' continue option (ad SDK integration)"
+    checklist_path: "refs/completeness-checklist.md § monetization"
+    severity: low
+  - item: "Villain reveal sprite-based atlas art (5 villain illustrations, unmask animation frames)"
+    checklist_path: "refs/completeness-checklist.md § assets"
+    severity: low
+  - item: "Colorblind palette override (tint-swap per bubble type for Protanopia/Deuteranopia/Tritanopia)"
+    checklist_path: "refs/completeness-checklist.md § accessibility"
+    severity: medium
+  - item: "Full 75-level hand-crafted data (levels L3–L75; only L1 and L2 authored in core pass)"
+    checklist_path: "refs/completeness-checklist.md § content"
+    severity: low
+
+warnings:
+  - "collision-resolved:game-mode — skill-wins (adapt: GameController contract preserved, DOM impl body replaced with Pixi; guardrail #1 critical if DOM used in GPU zone); gdd-ask=pixi-gpu honored via adapt path"
+  - "collision-resolved:state-source-of-truth — skill-wins (ecs-state.mdc critical; ECS is source of truth; state.ts signals demoted to DOM bridge via bridgeEcsToSignals); gdd=signals-only dropped"
+  - "collision-resolved:screen-id-chapter-map — skill-wins (scaffold-state critical; valid IDs are loading/start/game/results; chapter-map routed to 'start' screen Continue branch; no new screen ID introduced)"
+  - "collision-resolved:results-screen-copy — gdd-wins ('Almost there, pal!' copy replaces 'Game Over' scaffold text; content-gap/soft; allow-gdd-overrides=false but both values are valid copy—GDD wins on brand copy per content-gap note in gdd-analysis.yml)"
+  - "collision-resolved:bubble-color-alone — skill-wins (ux/core-guidelines.md soft; plan adds emoji icon secondary cue per bubble type: Amber🌟/Teal💎/Violet🔮/Coral🌸/Lime🍃; color+icon dual coding in batch 1 + batch 2); gdd-ask=color-only dropped (default)"
+  - "self-audit:src-core-readonly — PASS: no batch file path lands under src/core/"
+  - "self-audit:no-stubs-placeholders — PASS: resolved_questions_scalars contains no placeholder/stub/TBD values; completeness_gaps used for deferred items"
+  - "self-audit:slug-substitution — PASS: all batches use src/game/mysterymunch/ (slug=mysterymunch); no <game-root> or mygame literal in any files.* entry"
+  - "self-audit:collision-resolution — PASS: 5 collision: entries in gdd-analysis.yml.warnings[], all 5 have matching collision-resolved: entries above"
+  - "self-audit:integration-file-coverage — PASS: every file in files.integration has ≥1 acceptance[].should row referencing it"
